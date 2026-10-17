@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+/* Raw tokens for plain CSS; @theme maps them to Tailwind utilities (bg-blue, text-mint, ...) */
+:root {
+  --canvas: #f2f3f5;
+  --grid: #e3e5e9;
+  --ink: #000000;
+  --muted: #5f6470;
+  --blue: #3b49f0;
+  --mint: #5cf2c0;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-blue: var(--blue);
+  --color-mint: var(--mint);
+  --font-sans: var(--font-archivo);
+}
+
+/* Nav and hero links glide to their section instead of jumping */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-archivo), system-ui, sans-serif;
+}
+
+/* Faint vertical guide lines behind the hero, as in the reference shots */
+.grid-lines {
+  background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px);
+  background-size: calc(100% / 4) 100%;
+}
+
+/* Wide, heavy display type */
+.display {
+  font-stretch: 125%;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+/* ---------- Motion, decoded from the reference shot videos ----------
+   Fast attack, long settle (expo-out). Elements carry .a (hidden until played)
+   plus one effect class; a parent with .play starts them, --d sets the delay. */
+:root {
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+@property --sweep {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+
+.a {
+  opacity: 0;
+}
+.play .a-word {
+  display: inline-block;
+  animation: word-in 900ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 80ms + var(--d, 0ms));
+}
+.play .a-up {
+  animation: up 900ms var(--ease) both var(--d, 0ms);
+}
+.play .a-rise {
+  animation: rise 1000ms var(--ease) both var(--d, 0ms);
+}
+.play .a-wipe {
+  animation: wipe 1100ms var(--ease) both var(--d, 0ms);
+}
+.play .a-pop {
+  animation: pop-in 600ms cubic-bezier(0.2, 1.6, 0.4, 1) both var(--d, 0ms);
+}
+.play .a-draw {
+  stroke-dasharray: 1;
+  animation: draw 700ms var(--ease) both var(--d, 0ms);
+}
+.play .a-ring {
+  mask: conic-gradient(#000 var(--sweep), transparent 0);
+  animation: ring 1400ms var(--ease) both var(--d, 0ms);
+}
+.play .a-pill {
+  animation: pill 900ms var(--ease) both var(--d, 0ms);
+}
+
+@keyframes word-in {
+  from { opacity: 0.12; transform: translateY(0.3em); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes up {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes rise {
+  from { opacity: 1; transform: translateY(105%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes wipe {
+  from { opacity: 1; clip-path: inset(30% 70% 0 0 round 2rem); }
+  to { opacity: 1; clip-path: inset(0 0 0 0 round 2rem); }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes draw {
+  from { opacity: 1; stroke-dashoffset: 1; }
+  to { opacity: 1; stroke-dashoffset: 0; }
+}
+@keyframes ring {
+  from { opacity: 1; --sweep: 0%; }
+  to { opacity: 1; --sweep: 100%; }
+}
+@keyframes pill {
+  from { opacity: 1; clip-path: inset(0 0 0 calc(100% - 3.3rem) round 999px); }
+  to { opacity: 1; clip-path: inset(0 0 0 0 round 999px); }
+}
+
+/* Endless strip under the hero */
+.marquee {
+  mask: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 40s linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+
+/* "Paid" badge lands when PayPal confirms */
+.pop {
+  animation: pop-in 520ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .a,
+  .pop {
+    opacity: 1 !important;
+    animation: none !important;
+    clip-path: none !important;
+  }
+  .marquee-track {
+    animation: none;
+  }
+}
+
+:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
