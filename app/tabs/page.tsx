@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, ViewTransition } from "react";
-import { Asterisk, Avatar, TONES } from "../ui";
+import { addTransitionType, startTransition, useCallback, useEffect, useState, ViewTransition } from "react";
+import { Asterisk, Avatar, ThemeToggle, TONES } from "../ui";
 
 type Share = {
   name: string;
@@ -19,6 +19,9 @@ type Data = { user: { name: string; email: string }; paid: Split[]; owe: Split[]
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
 // Same slide as the home page: forward into My tabs, back out to Split a bill.
+type Tab = "pending" | "settled" | "owe";
+const TAB_ORDER: Tab[] = ["pending", "settled", "owe"];
+const TAB_SLIDE = { "tab-forward": "tab-forward", "tab-back": "tab-back", default: "none" };
 const SLIDE = { "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" };
 const isPaid = (s: Share) => PAID.includes(s.status);
 const isOpen = (s: Share) => !isPaid(s) && s.status !== "CANCELLED";
@@ -47,7 +50,14 @@ export default function Tabs() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [loggedOut, setLoggedOut] = useState(false);
-  const [tab, setTab] = useState<"pending" | "settled" | "owe">("pending");
+  const [tab, setTab] = useState<Tab>("pending");
+  // A transition (not a plain setState) so <ViewTransition> animates; the type says which way to slide.
+  const switchTab = (next: Tab) =>
+    next !== tab &&
+    startTransition(() => {
+      addTransitionType(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(tab) ? "tab-forward" : "tab-back");
+      setTab(next);
+    });
   const [nudged, setNudged] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -106,6 +116,7 @@ export default function Tabs() {
           <Link href="/#split" transitionTypes={["nav-back"]} className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">
             Split a bill
           </Link>
+          <ThemeToggle />
           {data && (
             <form action="/api/auth/logout" method="post">
               <button className="rounded-full border border-line px-4 py-2 hover:border-fg">Log out</button>
@@ -148,15 +159,22 @@ export default function Tabs() {
                   key={key}
                   role="tab"
                   aria-selected={tab === key}
-                  onClick={() => setTab(key)}
-                  className={`flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 font-semibold transition ${tab === key ? "bg-blue text-white" : "bg-surface hover:bg-line"}`}
+                  onClick={() => switchTab(key)}
+                  className={`relative flex items-center gap-2 whitespace-nowrap rounded-full px-5 py-2.5 font-semibold transition-colors ${tab === key ? "text-white" : "bg-surface hover:bg-line"}`}
                 >
-                  {label}
-                  <span className={`rounded-full px-2 text-xs leading-5 ${tab === key ? "bg-white/20" : "bg-canvas"}`}>{count}</span>
+                  {/* One named pill: during a tab switch it glides from the old tab to the new one. */}
+                  {tab === key && <span aria-hidden className="absolute inset-0 rounded-full bg-blue" style={{ viewTransitionName: "tab-pill" }} />}
+                  {/* Labels get their own layer so the gliding pill passes behind them, not over them. */}
+                  <span className="relative flex items-center gap-2" style={{ viewTransitionName: `tab-label-${key}` }}>
+                    {label}
+                    <span className={`rounded-full px-2 text-xs leading-5 ${tab === key ? "bg-white/20" : "bg-canvas"}`}>{count}</span>
+                  </span>
                 </button>
               ))}
             </div>
 
+            {/* Keyed on the tab: the old list slides out and the new one slides in, toward the tab you picked. */}
+            <ViewTransition key={tab} enter={TAB_SLIDE} exit={TAB_SLIDE} default="none">
             <div role="tabpanel" className="mt-6 space-y-4">
               {list.length === 0 && (
                 <div className="rounded-[1.75rem] bg-surface p-8 text-center text-muted">
@@ -219,6 +237,7 @@ export default function Tabs() {
                 );
               })}
             </div>
+            </ViewTransition>
             <p className="mt-8 text-xs text-muted">
               Sandbox demo: requests are sent from Tabby&apos;s PayPal account. Routing money to each person&apos;s own PayPal needs PayPal&apos;s partner program.
             </p>

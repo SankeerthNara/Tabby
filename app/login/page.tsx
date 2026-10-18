@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Asterisk, Avatar, Scribble, TONES, d } from "../ui";
+import { Asterisk, Avatar, Scribble, ThemeToggle, TONES, d } from "../ui";
 
 const noSubscribe = () => () => {};
 const query = (key: string) => () => new URLSearchParams(location.search).get(key) ?? "";
@@ -18,7 +18,10 @@ export default function Login() {
   const href = `/api/auth/login?next=${encodeURIComponent(nextPath.startsWith("/") ? nextPath : "/")}`;
 
   return (
-    <main className={`grid-lines flex flex-1 items-center ${played ? "play" : ""}`}>
+    <main className={`grid-lines relative flex flex-1 items-center ${played ? "play" : ""}`}>
+      <div className="absolute right-5 top-5 sm:right-8">
+        <ThemeToggle />
+      </div>
       <div className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 py-12 sm:px-8 lg:grid-cols-[1.05fr_1fr]">
         <div>
           <p className="a a-up flex items-center gap-2 text-xl font-bold" style={d(0)}>

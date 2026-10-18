@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 
 // Pastel [background, text] pairs; each person keeps one tone on the receipt and in the shares list.
 export const TONES = [
@@ -83,5 +84,55 @@ export function Avatar({
     >
       {(name.trim()[0] ?? "?").toUpperCase()}
     </span>
+  );
+}
+
+const onThemeChange = (cb: () => void) => {
+  addEventListener("themechange", cb);
+  return () => removeEventListener("themechange", cb);
+};
+export function ThemeToggle() {
+  const dark = useSyncExternalStore(onThemeChange, () => document.documentElement.dataset.theme === "dark", () => false);
+  const flip = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const next = dark ? "light" : "dark";
+    const apply = () => {
+      document.documentElement.dataset.theme = next;
+      try {
+        localStorage.theme = next;
+      } catch {}
+      flushSync(() => dispatchEvent(new Event("themechange"))); // icon must update inside the snapshot
+    };
+    if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
+
+    // The new theme grows as a circle from the button (or its centre when activated by keyboard).
+    const box = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX || box.left + box.width / 2;
+    const y = e.clientY || box.top + box.height / 2;
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(apply).ready.then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 650, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    );
+  };
+  return (
+    <button
+      type="button"
+      onClick={flip}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      className="grid size-9 place-items-center rounded-full border border-line hover:border-fg"
+    >
+      <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        {dark ? (
+          <>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </>
+        ) : (
+          <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+        )}
+      </svg>
+    </button>
   );
 }

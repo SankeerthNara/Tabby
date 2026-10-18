@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, ViewTransition, type CSSProperties } from "react";
-import { flushSync } from "react-dom";
 import type { Person, Portion, Receipt, Share } from "@/lib/split";
 import { joinTranscripts } from "@/lib/transcript";
 import HowItWorks from "./HowItWorks";
-import { Asterisk, Avatar, Scribble, TONES, d } from "./ui";
+import { Asterisk, Avatar, Scribble, ThemeToggle, TONES, d } from "./ui";
 
 type Sent = {
   name: string;
@@ -297,56 +297,6 @@ function VoiceButton({ value, onChange, onError, disabled }: { value: string; on
 }
 
 // Theme lives on <html data-theme>; layout.tsx sets it before first paint.
-const onThemeChange = (cb: () => void) => {
-  addEventListener("themechange", cb);
-  return () => removeEventListener("themechange", cb);
-};
-function ThemeToggle() {
-  const dark = useSyncExternalStore(onThemeChange, () => document.documentElement.dataset.theme === "dark", () => false);
-  const flip = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const next = dark ? "light" : "dark";
-    const apply = () => {
-      document.documentElement.dataset.theme = next;
-      try {
-        localStorage.theme = next;
-      } catch {}
-      flushSync(() => dispatchEvent(new Event("themechange"))); // icon must update inside the snapshot
-    };
-    if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
-
-    // The new theme grows as a circle from the button (or its centre when activated by keyboard).
-    const box = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX || box.left + box.width / 2;
-    const y = e.clientY || box.top + box.height / 2;
-    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
-    document.startViewTransition(apply).ready.then(() =>
-      document.documentElement.animate(
-        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-        { duration: 650, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
-      ),
-    );
-  };
-  return (
-    <button
-      type="button"
-      onClick={flip}
-      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
-      className="grid size-9 place-items-center rounded-full border border-line hover:border-fg"
-    >
-      <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-        {dark ? (
-          <>
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-          </>
-        ) : (
-          <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
-        )}
-      </svg>
-    </button>
-  );
-}
-
 // Round "back to top" button, shown once you scroll past most of the first screen.
 const onScroll = (cb: () => void) => {
   addEventListener("scroll", cb, { passive: true });
@@ -371,7 +321,7 @@ function ScrollTop() {
   );
 }
 
-export default function Home() {
+function Home() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [people, setPeople] = useState<Person[]>([{ name: "Me", email: "" }, { name: "", email: "" }]);
   const [sentence, setSentence] = useState("");
@@ -811,4 +761,12 @@ export default function Home() {
     </div>
     </ViewTransition>
   );
+}
+
+// A fresh split each time you arrive by a link (e.g. "Split a bill" in My tabs). Next keeps visited
+// pages alive with React Activity, so without this key the previous bill would still be on screen.
+// Browser Back keeps the same id, so going back still restores what you were doing.
+export default function Page() {
+  const { bfcacheId } = useRouter();
+  return <Home key={bfcacheId} />;
 }

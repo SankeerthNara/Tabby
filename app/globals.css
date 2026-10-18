@@ -235,3 +235,32 @@ body {
     animation-delay: 0s !important;
   }
 }
+
+/* ---------- Switching tabs on My tabs ----------
+   The list slides toward the tab you picked; the blue pill glides between tab buttons. */
+::view-transition-old(.tab-forward),
+::view-transition-old(.tab-back) {
+  animation:
+    160ms ease-in both vt-fade reverse,
+    320ms var(--ease) both vt-slide reverse;
+}
+::view-transition-new(.tab-forward),
+::view-transition-new(.tab-back) {
+  animation:
+    240ms ease-out 100ms both vt-fade,
+    420ms var(--ease) both vt-slide;
+}
+::view-transition-old(.tab-forward) { --vt-x: -48px; }
+::view-transition-new(.tab-forward) { --vt-x: 48px; }
+::view-transition-old(.tab-back) { --vt-x: 48px; }
+::view-transition-new(.tab-back) { --vt-x: -48px; }
+::view-transition-group(tab-pill) {
+  animation-duration: 380ms;
+  animation-timing-function: var(--ease);
+}
+/* keep tab labels above the gliding pill */
+::view-transition-group(tab-label-pending),
+::view-transition-group(tab-label-settled),
+::view-transition-group(tab-label-owe) {
+  z-index: 2;
+}
