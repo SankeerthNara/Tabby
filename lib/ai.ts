@@ -33,32 +33,45 @@ async function ask<T extends z.ZodType>(schema: T, parts: Part[]): Promise<z.inf
 const ReceiptSchema = z.object({
   merchant: z.string(),
   currency: z.string().describe("ISO 4217 code, e.g. USD"),
-  items: z.array(z.object({ name: z.string(), price: z.number().describe("line total = quantity x unit price") })),
+  items: z.array(
+    z.object({
+      quantity: z.number().int().nullable().describe("quantity printed on the line, e.g. 2 for '2 x Hakka Noodles'; null if none is printed"),
+      name: z.string().describe("item name without the quantity"),
+      price: z.number().describe("line total = quantity x unit price"),
+    }),
+  ),
   tax: z.number(),
   tip: z.number().describe("tip, gratuity or service charge printed on the receipt, else 0"),
   total: z.number().describe("final amount due"),
 });
 
-export function readReceipt(base64: string, mimeType: string): Promise<Receipt> {
-  return ask(ReceiptSchema, [
+export async function readReceipt(base64: string, mimeType: string): Promise<Receipt> {
+  const r = await ask(ReceiptSchema, [
     { inlineData: { mimeType, data: base64 } },
     {
-      text: "Extract every purchased line item from this receipt. Use short readable item names. Discounts are items with a negative price. Do not list subtotal, tax, tip or total as items. If this is not a receipt, return no items.",
+      text: "Extract every purchased line item from this receipt, with the quantity printed on each line. Discounts are items with a negative price. Do not list subtotal, tax, tip or total as items. If this is not a receipt, return no items.",
     },
   ]);
+  // Quantity stays in the name, so it shows in the UI, guides "I had 1 of the 2 dosas", and lands on the invoice.
+  return { ...r, items: r.items.map(({ quantity, name, price }) => ({ name: quantity ? `${quantity} x ${name}` : name, price })) };
 }
 
 export function assignItems(receipt: Receipt, names: string[], payer: string, sentence: string) {
   const Who = z.enum(names as [string, ...string[]]);
   const schema = z.object({
-    assignments: z.array(z.object({ item: z.number().int(), people: z.array(Who) })),
+    assignments: z.array(
+      z.object({
+        item: z.number().int(),
+        people: z.array(z.object({ name: Who, units: z.number().describe("how many of this line the person had; use equal numbers for an evenly shared item") })),
+      }),
+    ),
     extra_tip_percent: z.number().describe("tip percent the user asked to add on top, else 0"),
     question: z.string().describe("one short clarifying question if something is genuinely ambiguous, else empty"),
   });
   const items = receipt.items.map((it, i) => `${i}. ${it.name} - ${it.price}`).join("\n");
   return ask(schema, [
     {
-      text: `Receipt items:\n${items}\n\nPeople: ${names.join(", ")}. "I", "me" or "my" means ${payer}.\n\nWho had what, in their words:\n"""${sentence}"""\n\nFor every item index, list the people who shared it. Items nobody mentioned, or said to be shared by everyone, get all people.`,
+      text: `Receipt items:\n${items}\n\nPeople: ${names.join(", ")}. "I", "me" or "my" means ${payer}.\n\nWho had what, in their words:\n"""${sentence}"""\n\nFor every item index, list who had it and how many units each. Example: on "3 x Veg Biryani", "I had 1 biryani, Sam the rest" gives Me 1 and Sam 2. An item shared evenly gives each sharer 1. Items nobody mentioned, or said to be shared by everyone, get all people with 1 each.`,
     },
   ]);
 }

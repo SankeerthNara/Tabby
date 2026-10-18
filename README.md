@@ -6,7 +6,7 @@ Snap a receipt, say who had what. Tabby's AI splits the bill and sends everyone 
 
 1. **Snap** — Gemini (vision) reads the receipt into line items, tax, tip and total.
 2. **Say** — "I had the burger, Sam and Priya split the nachos, add 18% tip." Gemini maps that to items (answers are schema-validated, so it can't invent people) and asks if something is ambiguous.
-3. **Split** — plain code does the money in integer cents: shared items split evenly, tax/tip/fees spread in proportion to what each person ordered, rounding by largest remainder so shares always equal the receipt total.
+3. **Split** — plain code does the money in integer cents: shared lines split by how many units each person had (1 of "3 x Biryani" = 1/3), tax/tip/fees spread in proportion to what each person ordered, rounding by largest remainder so shares always equal the receipt total.
 4. **Send** — one itemized PayPal invoice per friend (Invoicing API v2).
 5. **Settle** — live paid/unpaid board polls PayPal; "Nudge" sends a PayPal reminder.
 

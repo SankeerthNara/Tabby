@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { Person, Receipt, Share } from "@/lib/split";
+import type { Person, Portion, Receipt, Share } from "@/lib/split";
 import HowItWorks from "./HowItWorks";
 import { Asterisk, Avatar, Scribble, TONES, d } from "./ui";
 
@@ -220,7 +220,7 @@ export default function Home() {
   const [people, setPeople] = useState<Person[]>([{ name: "Me", email: "" }, { name: "", email: "" }]);
   const [sentence, setSentence] = useState("");
   const [shares, setShares] = useState<Share[] | null>(null);
-  const [assignments, setAssignments] = useState<string[][]>([]);
+  const [assignments, setAssignments] = useState<Portion[][]>([]);
   const [question, setQuestion] = useState("");
   const [sent, setSent] = useState<Sent[] | null>(null);
   const [busy, setBusy] = useState("");
@@ -403,7 +403,7 @@ export default function Home() {
                   <p className="font-semibold">{receipt.merchant || "Your receipt"}</p>
                   <ul className="mt-3 divide-y divide-black/5">
                     {receipt.items.map((it, i) => {
-                      const who = assignments.length ? (assignments[i]?.length ? assignments[i] : people.map((p) => p.name)) : [];
+                      const who: Portion[] = assignments.length ? (assignments[i]?.length ? assignments[i] : people.map((p) => ({ name: p.name, units: 1 }))) : [];
                       return (
                         <li key={i} className="py-2.5">
                           <div className="flex justify-between gap-4">
@@ -412,9 +412,10 @@ export default function Home() {
                           </div>
                           {who.length > 0 && (
                             <div className="mt-1.5 flex flex-wrap gap-1">
-                              {who.map((n) => (
+                              {who.map(({ name: n, units }) => (
                                 <span key={n} className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: tone(n)[0], color: tone(n)[1] }}>
                                   {n}
+                                  {units !== 1 && ` ×${+units.toFixed(2)}`}
                                 </span>
                               ))}
                             </div>

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { assignItems } from "@/lib/ai";
-import { splitBill } from "@/lib/split";
+import { splitBill, type Portion } from "@/lib/split";
 
 const Body = z.object({
   receipt: z.object({
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
   try {
     const ai = await assignItems(receipt, names, names[0], sentence);
-    const assignments = receipt.items.map((_, i) => ai.assignments.find((a) => a.item === i)?.people ?? []);
+    const assignments: Portion[][] = receipt.items.map((_, i) => ai.assignments.find((a) => a.item === i)?.people ?? []);
     return Response.json({ shares: splitBill(receipt, assignments, people, ai.extra_tip_percent), assignments, question: ai.question });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 502 });

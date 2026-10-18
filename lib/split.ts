@@ -23,18 +23,30 @@ export function allocate(amount: number, weights: number[]): number[] {
   return parts.map((p) => p * sign);
 }
 
-// assignments[i] = names sharing receipt.items[i]; empty means everyone shares it.
-// Tax, tip, fees and discounts are spread in proportion to what each person ordered.
-export function splitBill(receipt: Receipt, assignments: string[][], people: Person[], extraTipPercent = 0): Share[] {
+// How much of one receipt line a person had, e.g. 2 of "3 x Veg Biryani".
+export type Portion = { name: string; units: number };
+
+// assignments[i] = who had receipt.items[i] and how many units; empty means everyone shares it equally.
+// Each line is split by units; tax, tip, fees and discounts in proportion to what each person ordered.
+export function splitBill(receipt: Receipt, assignments: Portion[][], people: Person[], extraTipPercent = 0): Share[] {
   const shares: Share[] = people.map((p) => ({ ...p, lines: [], totalCents: 0 }));
   const idx = new Map(people.map((p, i) => [p.name, i]));
 
   receipt.items.forEach((item, i) => {
-    const who = (assignments[i] ?? []).map((n) => idx.get(n)).filter((n) => n !== undefined);
-    const sharers = who.length ? [...new Set(who)] : people.map((_, j) => j);
-    const parts = allocate(toCents(item.price), sharers.map(() => 1));
-    const label = sharers.length > 1 ? `${item.name} (1/${sharers.length})` : item.name;
-    sharers.forEach((s, k) => parts[k] && shares[s].lines.push({ name: label, cents: parts[k] }));
+    const units = new Map<number, number>(); // person index -> units, merging duplicate names
+    for (const { name, units: u } of assignments[i] ?? []) {
+      const j = idx.get(name);
+      if (j !== undefined && u > 0) units.set(j, (units.get(j) ?? 0) + u);
+    }
+    if (!units.size) people.forEach((_, j) => units.set(j, 1));
+    const sharers = [...units.keys()];
+    const weights = [...units.values()];
+    const total = weights.reduce((a, b) => a + b, 0);
+    const parts = allocate(toCents(item.price), weights);
+    sharers.forEach((s, k) => {
+      const label = weights[k] === total ? item.name : `${item.name} (${+weights[k].toFixed(2)}/${+total.toFixed(2)})`;
+      if (parts[k]) shares[s].lines.push({ name: label, cents: parts[k] });
+    });
   });
 
   const subtotals = shares.map((s) => s.lines.reduce((a, l) => a + l.cents, 0));

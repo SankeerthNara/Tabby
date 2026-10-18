@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allocate, splitBill, type Receipt } from "./split.ts";
+import { allocate, splitBill, type Portion, type Receipt } from "./split.ts";
+
+const each = (...names: string[]): Portion[] => names.map((name) => ({ name, units: 1 }));
 
 test("allocate always sums exactly", () => {
   assert.deepEqual(allocate(100, [1, 1, 1]), [34, 33, 33]);
@@ -19,16 +21,25 @@ test("splitBill matches the receipt total to the cent", () => {
     ],
   };
   const people = [{ name: "Me", email: "" }, { name: "Sam", email: "s@x.com" }, { name: "Priya", email: "p@x.com" }];
-  const shares = splitBill(receipt, [["Me"], ["Sam", "Priya"], ["Sam"], []], people);
+  const shares = splitBill(receipt, [each("Me"), each("Sam", "Priya"), each("Sam"), []], people);
 
   assert.equal(shares.reduce((a, s) => a + s.totalCents, 0), 4518);
   assert.equal(shares[0].lines[0].cents, 1450); // Me: burger alone
   assert.deepEqual(shares[1].lines.slice(0, 2).map((l) => l.cents), [550, 700]); // Sam: half nachos + beer
+  assert.equal(shares[1].lines[0].name, "Nachos (1/2)");
   assert.ok(shares.every((s) => s.lines.every((l) => Number.isInteger(l.cents))));
+});
+
+test("shared lines split by units, not evenly", () => {
+  const receipt: Receipt = { merchant: "", currency: "INR", tax: 0, tip: 0, total: 0, items: [{ name: "3 x Veg Biryani", price: 747 }] };
+  const people = [{ name: "Me", email: "" }, { name: "Vattesh", email: "v@x.com" }];
+  const shares = splitBill(receipt, [[{ name: "Me", units: 1 }, { name: "Vattesh", units: 2 }]], people);
+  assert.deepEqual(shares.map((s) => s.totalCents), [24900, 49800]);
+  assert.equal(shares[1].lines[0].name, "3 x Veg Biryani (2/3)");
 });
 
 test("extra tip percent and unknown names", () => {
   const receipt: Receipt = { merchant: "", currency: "USD", tax: 0, tip: 0, total: 0, items: [{ name: "Pizza", price: 20 }] };
-  const shares = splitBill(receipt, [["Ghost"]], [{ name: "A", email: "" }, { name: "B", email: "" }], 20);
+  const shares = splitBill(receipt, [each("Ghost")], [{ name: "A", email: "" }, { name: "B", email: "" }], 20);
   assert.deepEqual(shares.map((s) => s.totalCents), [1200, 1200]);
 });
