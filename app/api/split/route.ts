@@ -25,7 +25,8 @@ export async function POST(req: Request) {
 
   try {
     const ai = await assignItems(receipt, names, names[0], sentence);
-    const assignments: Portion[][] = receipt.items.map((_, i) => ai.assignments.find((a) => a.item === i)?.people ?? []);
+    // Smaller fallback models sometimes list people with 0 units; drop them so they get no chip and no line.
+    const assignments: Portion[][] = receipt.items.map((_, i) => (ai.assignments.find((a) => a.item === i)?.people ?? []).filter((p) => p.units > 0));
     return Response.json({ shares: splitBill(receipt, assignments, people, ai.extra_tip_percent), assignments, question: ai.question });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 502 });

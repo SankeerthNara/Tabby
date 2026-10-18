@@ -8,6 +8,22 @@
   --muted: #5f6470;
   --blue: #3b49f0;
   --mint: #5cf2c0;
+  /* theme-aware: cards, main text, dividers, the pale-blue tile */
+  --surface: #ffffff;
+  --fg: #000000;
+  --line: rgb(0 0 0 / 0.12);
+  --tile: #e8ecff;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #101115;
+  --grid: #1d1f25;
+  --muted: #a3a8b3;
+  --surface: #1b1d22;
+  --fg: #f2f3f5;
+  --line: rgb(255 255 255 / 0.14);
+  --tile: #222a5c;
 }
 
 @theme inline {
@@ -16,7 +32,18 @@
   --color-muted: var(--muted);
   --color-blue: var(--blue);
   --color-mint: var(--mint);
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-line: var(--line);
+  --color-tile: var(--tile);
   --font-sans: var(--font-archivo);
+}
+
+/* Theme switch: page.tsx animates the new snapshot as a growing circle, so drop the default crossfade */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
 /* Nav and hero links glide to their section instead of jumping */
@@ -28,7 +55,7 @@
 
 body {
   background: var(--canvas);
-  color: var(--ink);
+  color: var(--fg);
   font-family: var(--font-archivo), system-ui, sans-serif;
 }
 

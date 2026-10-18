@@ -78,7 +78,7 @@ export function Avatar({
   return (
     <span
       aria-hidden
-      className={`${size} grid shrink-0 place-items-center rounded-full text-sm font-bold ring-2 ring-white ${className}`}
+      className={`${size} grid shrink-0 place-items-center rounded-full text-sm font-bold ring-2 ring-surface ${className}`}
       style={{ background: tone[0], color: tone[1], ...style }}
     >
       {(name.trim()[0] ?? "?").toUpperCase()}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import type { Person, Portion, Receipt, Share } from "@/lib/split";
 import HowItWorks from "./HowItWorks";
 import { Asterisk, Avatar, Scribble, TONES, d } from "./ui";
@@ -160,7 +161,7 @@ function HeroPanel() {
       <Scribble className="absolute -right-4 top-28 hidden w-40 text-white/70 sm:block" delay={1500} />
 
       <div className="relative mt-8 flex items-end gap-4">
-        <div className="a a-rise w-60 shrink-0 rounded-t-[2.4rem] border-[7px] border-b-0 border-black bg-white px-5 pb-6 pt-9 text-ink shadow-2xl" style={d(0)}>
+        <div className="a a-rise w-60 shrink-0 rounded-t-[2.4rem] border-[7px] border-b-0 border-black bg-surface px-5 pb-6 pt-9 text-fg shadow-2xl" style={d(0)}>
           <div className="mx-auto -mt-6 mb-5 h-5 w-20 rounded-full bg-black" />
           <div
             className="a a-ring mx-auto grid size-40 place-items-center rounded-full"
@@ -168,7 +169,7 @@ function HeroPanel() {
               background: "conic-gradient(var(--blue) 0 35.5%, transparent 0 37%, var(--mint) 0 83.5%, transparent 0 85%, #000 0 98.5%, transparent 0)",
             })}
           >
-            <div className="grid size-[7.4rem] place-items-center rounded-full bg-white text-center">
+            <div className="grid size-[7.4rem] place-items-center rounded-full bg-surface text-center">
               <div>
                 <p className="text-xs text-muted">Total bill</p>
                 <p className="text-2xl font-bold">
@@ -192,7 +193,7 @@ function HeroPanel() {
           </div>
         </div>
 
-        <div className="a a-up mb-8 hidden w-56 space-y-3 rounded-2xl bg-white p-4 text-sm text-ink shadow-xl sm:block" style={d(1600)}>
+        <div className="a a-up mb-8 hidden w-56 space-y-3 rounded-2xl bg-surface p-4 text-sm text-fg shadow-xl sm:block" style={d(1600)}>
           <div className="flex items-center gap-3">
             <Avatar name="Sam" tone={TONES[1]} />
             <p className="leading-tight">
@@ -212,6 +213,156 @@ function HeroPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Browser speech-to-text (Chrome, Edge, Safari). No server or quota; Firefox has none, so the button hides.
+type Recognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+  onend: (() => void) | null;
+};
+const recognitionCtor = () => {
+  const w = window as unknown as Record<string, (new () => Recognition) | undefined>;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
+};
+const noSubscribe = () => () => {};
+
+function VoiceButton({ value, onChange, onError, disabled }: { value: string; onChange: (v: string) => void; onError: (m: string) => void; disabled: boolean }) {
+  const supported = useSyncExternalStore(noSubscribe, () => !!recognitionCtor(), () => false);
+  const rec = useRef<Recognition | null>(null);
+  const [listening, setListening] = useState(false);
+  useEffect(() => () => rec.current?.stop(), []);
+  if (!supported) return null;
+
+  const toggle = () => {
+    if (rec.current) return rec.current.stop();
+    const Ctor = recognitionCtor()!;
+    const r = new Ctor();
+    const before = value.trim(); // speaking adds to what's already typed
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = navigator.language || "en-IN";
+    r.onresult = (e) => {
+      const said = Array.from(e.results, (res) => res[0].transcript).join("").trim();
+      onChange(before ? `${before} ${said}` : said);
+    };
+    r.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") onError("Microphone access is blocked. Allow it in your browser's site settings, then try again.");
+      else if (e.error !== "no-speech" && e.error !== "aborted") onError(`Voice input stopped (${e.error}). You can type instead.`);
+    };
+    r.onend = () => {
+      rec.current = null;
+      setListening(false);
+    };
+    rec.current = r;
+    r.start();
+    setListening(true);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={disabled}
+      aria-pressed={listening}
+      // Idle: filled blue with a soft halo so it reads as the main way in. Recording: red, like any mic.
+      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-40 ${
+        listening
+          ? "bg-[#e5484d] shadow-[0_0_0_5px_rgb(229_72_77/0.22)]"
+          : "bg-blue shadow-[0_0_0_5px_rgb(59_73_240/0.18)] hover:brightness-110 hover:shadow-[0_0_0_7px_rgb(59_73_240/0.22)]"
+      }`}
+    >
+      {listening ? (
+        <span aria-hidden className="size-2.5 rounded-full bg-white motion-safe:animate-pulse" />
+      ) : (
+        <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <rect x="9" y="3" width="6" height="11" rx="3" />
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+        </svg>
+      )}
+      {listening ? "Listening… tap to stop" : "Say it"}
+    </button>
+  );
+}
+
+// Theme lives on <html data-theme>; layout.tsx sets it before first paint.
+const onThemeChange = (cb: () => void) => {
+  addEventListener("themechange", cb);
+  return () => removeEventListener("themechange", cb);
+};
+function ThemeToggle() {
+  const dark = useSyncExternalStore(onThemeChange, () => document.documentElement.dataset.theme === "dark", () => false);
+  const flip = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const next = dark ? "light" : "dark";
+    const apply = () => {
+      document.documentElement.dataset.theme = next;
+      try {
+        localStorage.theme = next;
+      } catch {}
+      flushSync(() => dispatchEvent(new Event("themechange"))); // icon must update inside the snapshot
+    };
+    if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
+
+    // The new theme grows as a circle from the button (or its centre when activated by keyboard).
+    const box = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX || box.left + box.width / 2;
+    const y = e.clientY || box.top + box.height / 2;
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(apply).ready.then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 650, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    );
+  };
+  return (
+    <button
+      type="button"
+      onClick={flip}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      className="grid size-9 place-items-center rounded-full border border-line hover:border-fg"
+    >
+      <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        {dark ? (
+          <>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </>
+        ) : (
+          <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+        )}
+      </svg>
+    </button>
+  );
+}
+
+// Round "back to top" button, shown once you scroll past most of the first screen.
+const onScroll = (cb: () => void) => {
+  addEventListener("scroll", cb, { passive: true });
+  return () => removeEventListener("scroll", cb);
+};
+function ScrollTop() {
+  const show = useSyncExternalStore(onScroll, () => scrollY > innerHeight * 0.6, () => false);
+  return (
+    <button
+      type="button"
+      onClick={() => scrollTo({ top: 0 })} // html { scroll-behavior: smooth } glides it, unless reduced motion is on
+      aria-label="Back to top"
+      tabIndex={show ? 0 : -1}
+      className={`fixed bottom-6 right-6 z-50 grid size-12 place-items-center rounded-full bg-fg text-surface shadow-lg transition duration-300 hover:bg-blue hover:text-white ${
+        show ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"
+      }`}
+    >
+      <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+        <path d="M12 19V5M6 11l6-6 6 6" />
+      </svg>
+    </button>
   );
 }
 
@@ -291,8 +442,8 @@ export default function Home() {
     setPeople((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
 
   const field =
-    "w-full rounded-xl bg-canvas px-3.5 py-2.5 text-sm text-ink placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-blue";
-  const card = "flex flex-col rounded-[1.75rem] bg-white p-6";
+    "w-full rounded-xl bg-canvas px-3.5 py-2.5 text-sm text-fg placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-blue";
+  const card = "flex flex-col rounded-[1.75rem] bg-surface p-6";
   const fileInput = (
     <input type="file" accept="image/*" className="sr-only" disabled={!!busy} onChange={(e) => onReceipt(e.target.files?.[0])} />
   );
@@ -314,8 +465,9 @@ export default function Home() {
           <a href="#how" className="hover:text-blue">How it works</a>
         </div>
         <div className="a a-up flex items-center gap-2 text-sm font-medium" style={d(1900)}>
-          <span className="hidden rounded-full border border-black/15 px-4 py-2 sm:inline">Payments by PayPal</span>
-          <a href="#split" className="rounded-full bg-ink px-4 py-2 text-white hover:bg-blue">Split a bill</a>
+          <span className="hidden rounded-full border border-line px-4 py-2 sm:inline">Payments by PayPal</span>
+          <ThemeToggle />
+          <a href="#split" className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">Split a bill</a>
         </div>
       </nav>
 
@@ -333,7 +485,7 @@ export default function Home() {
               <ArrowLink href="#split" className="a a-pill" style={d(1100)}>
                 Split a bill
               </ArrowLink>
-              <a href="#how" className="a a-up rounded-full border border-black/15 bg-white px-6 py-3.5 font-semibold hover:border-black" style={d(1250)}>
+              <a href="#how" className="a a-up rounded-full border border-line bg-surface px-6 py-3.5 font-semibold hover:border-fg" style={d(1250)}>
                 How it works
               </a>
             </div>
@@ -348,7 +500,7 @@ export default function Home() {
               <li
                 key={i}
                 aria-hidden={i >= SPLITS.length}
-                className="flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-5 py-3 font-semibold"
+                className="flex items-center gap-2 whitespace-nowrap rounded-full bg-surface px-5 py-3 font-semibold"
               >
                 <Asterisk className="size-3.5 text-blue" />
                 {label}
@@ -359,7 +511,7 @@ export default function Home() {
       </header>
 
 
-      <section id="split" ref={appRef} className={`mx-3 mb-6 scroll-mt-4 rounded-[2.5rem] bg-ink px-4 py-10 sm:mx-6 sm:px-8 lg:px-12 lg:py-14 ${appPlay}`}>
+      <section id="split" ref={appRef} className={`mx-3 mb-6 scroll-mt-4 rounded-[2.5rem] bg-ink px-4 py-10 ring-1 ring-line sm:mx-6 sm:px-8 lg:px-12 lg:py-14 ${appPlay}`}>
         <div className="mx-auto max-w-7xl">
           <div className="flex flex-wrap items-end justify-between gap-4 text-white">
             <h2 className="display text-[clamp(2.25rem,5vw,4rem)]">
@@ -381,7 +533,7 @@ export default function Home() {
             >
               <h3 className="text-lg font-bold">Receipt</h3>
               {!receipt ? (
-                <label className="mt-4 grid flex-1 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-black/15 bg-canvas px-6 py-14 text-center hover:border-blue">
+                <label className="mt-4 grid flex-1 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-line bg-canvas px-6 py-14 text-center hover:border-blue">
                   {fileInput}
                   {busy === "receipt" ? (
                     <span role="status" className="font-semibold motion-safe:animate-pulse">Reading your receipt…</span>
@@ -401,7 +553,7 @@ export default function Home() {
               ) : (
                 <div className="mt-4 text-sm">
                   <p className="font-semibold">{receipt.merchant || "Your receipt"}</p>
-                  <ul className="mt-3 divide-y divide-black/5">
+                  <ul className="mt-3 divide-y divide-line">
                     {receipt.items.map((it, i) => {
                       const who: Portion[] = assignments.length ? (assignments[i]?.length ? assignments[i] : people.map((p) => ({ name: p.name, units: 1 }))) : [];
                       return (
@@ -465,7 +617,7 @@ export default function Home() {
                         />
                         {people.length > 2 && (
                           <button
-                            className="grid size-8 shrink-0 place-items-center rounded-full text-xl text-muted hover:bg-canvas hover:text-ink"
+                            className="grid size-8 shrink-0 place-items-center rounded-full text-xl text-muted hover:bg-canvas hover:text-fg"
                             aria-label={`Remove ${p.name || `friend ${i}`}`}
                             onClick={() => setPeople(people.filter((_, j) => j !== i))}
                           >
@@ -481,7 +633,10 @@ export default function Home() {
                 + Add a friend
               </button>
 
-              <h3 className="mt-8 text-lg font-bold">Who had what?</h3>
+              <div className="mt-8 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-bold">Who had what?</h3>
+                <VoiceButton value={sentence} onChange={setSentence} onError={setError} disabled={!!busy} />
+              </div>
               <textarea
                 className={`${field} mt-3 h-28 resize-none`}
                 aria-label="Who had what"
@@ -527,7 +682,7 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  <ul className="mt-4 divide-y divide-black/5">
+                  <ul className="mt-4 divide-y divide-line">
                     {shares.map((s, i) => {
                       const st = statusOf(s.name);
                       const paid = PAID.includes(st?.status ?? "");
@@ -551,7 +706,7 @@ export default function Home() {
                           </div>
                           <div className="mt-2 flex items-center justify-between gap-2 pl-12 text-xs">
                             <details>
-                              <summary className="cursor-pointer text-muted hover:text-ink">What&apos;s included</summary>
+                              <summary className="cursor-pointer text-muted hover:text-fg">What&apos;s included</summary>
                               <ul className="mt-1.5 space-y-0.5">
                                 {s.lines.map((l, j) => (
                                   <li key={j} className="flex justify-between gap-3">
@@ -573,7 +728,7 @@ export default function Home() {
                                   Waiting
                                 </a>
                                 <button
-                                  className="rounded-full border border-black/15 px-2.5 py-1 font-semibold hover:border-black disabled:opacity-40"
+                                  className="rounded-full border border-line px-2.5 py-1 font-semibold hover:border-fg disabled:opacity-40"
                                   disabled={!!busy}
                                   onClick={() => onNudge(st.id!)}
                                 >
@@ -589,7 +744,7 @@ export default function Home() {
                   </ul>
                   {!sent && (
                     <button
-                      className="mt-auto w-full rounded-full bg-ink py-3.5 font-semibold text-white hover:bg-blue disabled:opacity-40"
+                      className="mt-auto w-full rounded-full bg-fg py-3.5 font-semibold text-surface hover:bg-blue hover:text-white disabled:opacity-40"
                       disabled={!!busy}
                       onClick={onSend}
                     >
@@ -603,6 +758,7 @@ export default function Home() {
         </div>
       </section>
       <HowItWorks />
+      <ScrollTop />
     </>
   );
 }

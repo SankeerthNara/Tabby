@@ -12,10 +12,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${archivo.variable} h-full antialiased`}
-    >
+    // suppressHydrationWarning: the script below sets data-theme before React hydrates.
+    <html lang="en" className={`${archivo.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        {/* Apply the saved (or system) theme before first paint, so dark mode never flashes white. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

@@ -116,7 +116,7 @@ function ScrubWords({
 function Phone({ children, rise }: { children: ReactNode; rise: number }) {
   return (
     <div
-      className="h-[94%] w-64 shrink-0 self-end overflow-hidden rounded-t-[2.4rem] border-[7px] border-b-0 border-black bg-white px-5 pb-6 pt-8 text-ink shadow-2xl lg:w-72"
+      className="h-[94%] w-64 shrink-0 self-end overflow-hidden rounded-t-[2.4rem] border-[7px] border-b-0 border-black bg-surface px-5 pb-6 pt-8 text-fg shadow-2xl lg:w-72"
       style={{ transform: `translateY(${(1 - rise) * 105}%)` }}
     >
       <div className="mx-auto -mt-5 mb-4 h-4 w-16 rounded-full bg-black" />
@@ -185,7 +185,7 @@ function SnapScene({ t }: { t: number }) {
                 <span>{price}</span>
               </p>
             ))}
-            <p className="mt-3 flex justify-between border-t border-black/10 px-1 pt-2 font-bold">
+            <p className="mt-3 flex justify-between border-t border-line px-1 pt-2 font-bold">
               <span>Total</span>
               <span>$46.44</span>
             </p>
@@ -280,7 +280,7 @@ function SayScene({ t }: { t: number }) {
           className="mt-4 max-w-xs text-white/80"
           style={up(k(t, 0.25, 0.4), 20)}
         >
-          Type it the way you&apos;d say it. Tabby asks if something&apos;s
+          Type it, or just say it out loud. Tabby asks if something&apos;s
           unclear.
         </p>
         <Asterisk
@@ -381,7 +381,7 @@ function PaidScene({ t }: { t: number }) {
   const paid = k(t, 0.78, 0.88);
   return (
     <div
-      className="flex h-full flex-col rounded-[2rem] bg-white p-5 lg:p-8"
+      className="flex h-full flex-col rounded-[2rem] bg-surface p-5 lg:p-8"
       style={up(k(t, 0, 0.12), 80)}
     >
       <p className="text-center text-[clamp(1.1rem,1.6vw,1.4rem)] italic leading-snug">
@@ -416,7 +416,7 @@ function PaidScene({ t }: { t: number }) {
             progress={k(t, 0.6, 0.85)}
           />
           <div
-            className="absolute bottom-[10%] right-[-8%] hidden w-[86%] rounded-2xl bg-white p-5 text-ink shadow-2xl md:block"
+            className="absolute bottom-[10%] right-[-8%] hidden w-[86%] rounded-2xl bg-surface p-5 text-fg shadow-2xl md:block"
             style={{
               transform: `translate(${(1 - fly[0]) * 60}%, ${(1 - fly[0]) * 110}%) rotate(${-14 - (1 - fly[0]) * 40}deg)`,
             }}
@@ -443,9 +443,9 @@ function PaidScene({ t }: { t: number }) {
           </div>
         </Tile>
 
-        <Tile g={g[1]} className="flex flex-col bg-[#e8ecff]">
+        <Tile g={g[1]} className="flex flex-col bg-tile">
           <div
-            className="mx-auto mt-[12%] hidden w-[88%] rounded-2xl bg-white p-5 text-sm shadow-xl md:block"
+            className="mx-auto mt-[12%] hidden w-[88%] rounded-2xl bg-surface p-5 text-sm shadow-xl md:block"
             style={{
               transform: `translateY(${(1 - fly[1]) * -140}%) rotate(${6 + (1 - fly[1]) * 30}deg)`,
             }}
@@ -465,7 +465,7 @@ function PaidScene({ t }: { t: number }) {
                 <span>{v}</span>
               </p>
             ))}
-            <p className="mt-2 flex justify-between border-t border-black/10 pt-2 font-bold">
+            <p className="mt-2 flex justify-between border-t border-line pt-2 font-bold">
               <span>Total</span>
               <span>$26.04</span>
             </p>
@@ -559,12 +559,12 @@ export default function HowItWorks() {
               return (
                 <li key={label} className="w-10 sm:w-36">
                   <span
-                    className={`hidden sm:block ${fill > 0 ? "text-ink" : "text-muted"}`}
+                    className={`hidden sm:block ${fill > 0 ? "text-fg" : "text-muted"}`}
                   >
                     {label}
                   </span>
                   <span className="sm:hidden">{i + 1}</span>
-                  <span className="mt-2 block h-1 overflow-hidden rounded-full bg-black/10">
+                  <span className="mt-2 block h-1 overflow-hidden rounded-full bg-line">
                     <span
                       className="block h-full rounded-full bg-blue"
                       style={{ width: `${fill * 100}%` }}
