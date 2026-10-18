@@ -273,3 +273,16 @@ body {
   from { opacity: 1; transform: scaleX(0); }
   to { opacity: 1; transform: scaleX(1); }
 }
+
+/* Small menus (friend suggestions, group picker) drop in from their trigger */
+.menu-in {
+  transform-origin: top;
+  animation: menu-in 170ms var(--ease) both;
+}
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-in { animation: none; }
+}

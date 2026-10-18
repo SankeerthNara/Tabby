@@ -290,7 +290,7 @@ function ScrollTop() {
 
 function Home() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [people, setPeople] = useState<Person[]>([{ name: "Me", email: "" }, { name: "", email: "" }]);
+  const [people, setPeople] = useState<Person[]>([{ name: "Me", email: "" }]);
   const [sentence, setSentence] = useState("");
   const [shares, setShares] = useState<Share[] | null>(null);
   const [assignments, setAssignments] = useState<Portion[][]>([]);
@@ -305,6 +305,8 @@ function Home() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupName, setGroupName] = useState<string | null>(null); // non-null while naming a new group
   const [note, setNote] = useState("");
+  const [suggest, setSuggest] = useState<{ row: number; active: number } | null>(null); // friend suggestions under a name field
+  const [groupMenu, setGroupMenu] = useState(false);
   const loadFriends = () =>
     fetch("/api/friends")
       .then((r) => (r.ok ? r.json() : null))
@@ -432,6 +434,16 @@ function Home() {
     const f = friends.find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
     setPerson(i, f && !people[i].email ? { name, email: f.email } : { name });
   };
+  // Saved friends matching what's typed in row i, minus anyone already at the table.
+  const matchesFor = (i: number) => {
+    const q = (people[i]?.name ?? "").trim().toLowerCase();
+    const taken = new Set(people.filter((_, j) => j !== i).map((p) => p.email.toLowerCase()).filter(Boolean));
+    return friends.filter((f) => !taken.has(f.email) && (!q || f.name.toLowerCase().includes(q) || f.email.includes(q))).slice(0, 5);
+  };
+  const pickFriend = (i: number, f: Person) => {
+    setPerson(i, { name: f.name, email: f.email });
+    setSuggest(null);
+  };
   const inRows = new Set(people.map((p) => p.email.toLowerCase()).filter(Boolean));
   const recent = friends.filter((f) => !inRows.has(f.email)).slice(0, 6);
   const addFriend = (f: Person) =>
@@ -444,7 +456,7 @@ function Home() {
     const g = groups.find((x) => x.id === id);
     if (!g) return;
     const members = g.members.filter((m) => m.email.toLowerCase() !== user?.email);
-    setPeople((ps) => [ps[0], ...(members.length ? members.map((m) => ({ ...m })) : [{ name: "", email: "" }])]);
+    setPeople((ps) => [ps[0], ...members.map((m) => ({ ...m }))]);
     setPayer(0);
     setNote(`Seated ${g.name}: ${members.map((m) => m.name).join(", ")}`);
   };
@@ -625,19 +637,54 @@ function Home() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-lg font-bold">Who&apos;s at the table?</h3>
                 {groups.length > 0 && (
-                  <select
-                    aria-label="Use a group"
-                    value=""
-                    onChange={(e) => seatGroup(e.target.value)}
-                    className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue"
+                  <div
+                    className="relative"
+                    onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setGroupMenu(false)}
+                    onKeyDown={(e) => e.key === "Escape" && setGroupMenu(false)}
                   >
-                    <option value="">Use a group</option>
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name} ({g.members.length})
-                      </option>
-                    ))}
-                  </select>
+                    <button
+                      aria-haspopup="menu"
+                      aria-expanded={groupMenu}
+                      onClick={() => setGroupMenu((o) => !o)}
+                      className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm font-semibold hover:border-fg"
+                    >
+                      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                        <circle cx="9" cy="8" r="3.2" />
+                        <path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.2a3 3 0 0 1 0 5.6M17.5 13.6A5.5 5.5 0 0 1 20.5 19" />
+                      </svg>
+                      Select a group
+                      <svg viewBox="0 0 24 24" className={`size-3.5 transition-transform ${groupMenu ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    {groupMenu && (
+                      <div role="menu" className="menu-in absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-line bg-surface p-1.5 shadow-xl">
+                        {groups.map((g) => (
+                          <button
+                            key={g.id}
+                            role="menuitem"
+                            onClick={() => {
+                              seatGroup(g.id);
+                              setGroupMenu(false);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-canvas focus:bg-canvas focus:outline-none"
+                          >
+                            <span className="flex -space-x-2">
+                              {g.members.slice(0, 3).map((m, k) => (
+                                <Avatar key={m.email} name={m.name} tone={TONES[(k + 1) % TONES.length]} size="size-7" />
+                              ))}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold">{g.name}</span>
+                              <span className="block text-xs text-muted">
+                                {g.members.length} {g.members.length === 1 ? "person" : "people"}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -661,14 +708,73 @@ function Home() {
                   <li key={i} className="flex items-start gap-2">
                     <Avatar name={p.name} tone={TONES[i % TONES.length]} />
                     <div className="grid min-w-0 flex-1 gap-1.5">
-                      <input
-                        className={field}
-                        placeholder="Name"
-                        list="tabby-friends"
-                        aria-label={i === 0 ? "Your name" : `Friend ${i} name`}
-                        value={p.name}
-                        onChange={(e) => onName(i, e.target.value)}
-                      />
+                      {(() => {
+                        const list = i > 0 && suggest?.row === i ? matchesFor(i) : [];
+                        const open = list.length > 0;
+                        const active = Math.min(suggest?.active ?? 0, list.length - 1);
+                        return (
+                          <div className="relative">
+                            <input
+                              className={field}
+                              placeholder="Name"
+                              role={i > 0 ? "combobox" : undefined}
+                              aria-autocomplete={i > 0 ? "list" : undefined}
+                              aria-expanded={i > 0 ? open : undefined}
+                              aria-controls={i > 0 ? `suggest-${i}` : undefined}
+                              aria-activedescendant={open ? `suggest-${i}-${active}` : undefined}
+                              aria-label={i === 0 ? "Your name" : `Friend ${i} name`}
+                              value={p.name}
+                              onFocus={() => i > 0 && setSuggest({ row: i, active: 0 })}
+                              onBlur={() => setSuggest(null)}
+                              onChange={(e) => {
+                                onName(i, e.target.value);
+                                if (i > 0) setSuggest({ row: i, active: 0 });
+                              }}
+                              onKeyDown={(e) => {
+                                if (!open) return;
+                                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                                  e.preventDefault();
+                                  const step = e.key === "ArrowDown" ? 1 : -1;
+                                  setSuggest({ row: i, active: (active + step + list.length) % list.length });
+                                } else if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  pickFriend(i, list[active]);
+                                } else if (e.key === "Escape") setSuggest(null);
+                              }}
+                            />
+                            {open && (
+                              <ul
+                                id={`suggest-${i}`}
+                                role="listbox"
+                                aria-label="Saved friends"
+                                className="menu-in absolute left-0 right-0 top-full z-20 mt-1.5 rounded-2xl border border-line bg-surface p-1 shadow-xl"
+                              >
+                                {list.map((f, k) => (
+                                  <li
+                                    key={f.email}
+                                    id={`suggest-${i}-${k}`}
+                                    role="option"
+                                    aria-selected={k === active}
+                                    // mousedown, not click: picking must happen before the input blurs and closes the list
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      pickFriend(i, f);
+                                    }}
+                                    onMouseEnter={() => setSuggest({ row: i, active: k })}
+                                    className={`flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 ${k === active ? "bg-canvas" : ""}`}
+                                  >
+                                    <Avatar name={f.name} tone={TONES[(friends.indexOf(f) + 1) % TONES.length]} size="size-7" />
+                                    <span className="min-w-0">
+                                      <span className="block text-sm font-semibold">{f.name}</span>
+                                      <span className="block truncate text-xs text-muted">{f.email}</span>
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {i === 0 ? (
                         <p className="truncate px-1 text-xs text-muted">{user ? `You · ${user.email}` : "You"}</p>
                       ) : (
@@ -693,7 +799,7 @@ function Home() {
                     >
                       {payer === i ? "Paid ✓" : "Paid"}
                     </button>
-                    {i > 0 && people.length > 2 && (
+                    {i > 0 && (
                       <button
                         className="mt-1 grid size-8 shrink-0 place-items-center rounded-full text-xl text-muted hover:bg-canvas hover:text-fg"
                         aria-label={`Remove ${p.name || `friend ${i}`}`}
@@ -705,13 +811,6 @@ function Home() {
                   </li>
                 ))}
               </ul>
-              <datalist id="tabby-friends">
-                {friends.map((f) => (
-                  <option key={f.email} value={f.name}>
-                    {f.email}
-                  </option>
-                ))}
-              </datalist>
               <p className="mt-2 text-xs text-muted">Tap Paid next to whoever paid the restaurant. Everyone else gets a PayPal request.</p>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -760,10 +859,14 @@ function Home() {
                 value={sentence}
                 onChange={(e) => setSentence(e.target.value)}
               />
-              <ArrowButton className="mt-4 self-start" disabled={!!busy || !receipt || !sentence.trim()} onClick={onSplit}>
+              <ArrowButton className="mt-4 self-start" disabled={!!busy || !receipt || !sentence.trim() || people.length < 2} onClick={onSplit}>
                 {busy === "split" ? "Splitting…" : "Split the bill"}
               </ArrowButton>
-              {!receipt && <p className="mt-2 text-sm text-muted">Add the receipt first.</p>}
+              {!receipt ? (
+                <p className="mt-2 text-sm text-muted">Add the receipt first.</p>
+              ) : (
+                people.length < 2 && <p className="mt-2 text-sm text-muted">Add at least one friend to split with.</p>
+              )}
               {question && (
                 <p className="mt-4 rounded-xl p-3.5 text-sm" style={{ background: TONES[5][0], color: TONES[5][1] }}>
                   <strong>Tabby isn&apos;t sure:</strong> {question} Reword it and split again.
