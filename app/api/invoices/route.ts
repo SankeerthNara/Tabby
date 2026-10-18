@@ -1,4 +1,6 @@
+import { currentUser } from "@/lib/auth";
 import { invoiceStatus, remind } from "@/lib/paypal";
+import { invoiceOwner } from "@/lib/store";
 
 const ID = /^[A-Z0-9-]{1,64}$/;
 
@@ -12,6 +14,10 @@ export async function POST(req: Request) {
   const { id } = await req.json().catch(() => ({}));
   if (typeof id !== "string" || !ID.test(id)) return Response.json({ error: "Bad invoice id." }, { status: 400 });
   try {
+    // Only the person who paid the bill can nudge for it.
+    const user = await currentUser();
+    if (!user) return Response.json({ error: "Log in with PayPal to send reminders." }, { status: 401 });
+    if ((await invoiceOwner(id)) !== user.id) return Response.json({ error: "That request isn't yours to nudge." }, { status: 403 });
     await remind(id);
     return Response.json({ ok: true });
   } catch (e) {

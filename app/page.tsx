@@ -20,6 +20,7 @@ type Sent = {
 };
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
+const DRAFT = "tabby-draft";
 // Phone photos are huge; shrink to 1600px JPEG first.
 async function shrink(file: File): Promise<Blob> {
   const img = await createImageBitmap(file);
@@ -378,7 +379,29 @@ export default function Home() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [played, setPlayed] = useState(false);
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
   const [appRef, appPlay] = useInView<HTMLElement>();
+  // Who's logged in, plus restore a split saved before going off to "Log in with PayPal".
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((d) => {
+        setUser(d.user);
+        const failed = new URLSearchParams(location.search).get("login");
+        if (failed) setError(`Couldn't log in with PayPal: ${failed}`);
+        const draft = sessionStorage.getItem(DRAFT);
+        if (!draft) return;
+        sessionStorage.removeItem(DRAFT);
+        const v = JSON.parse(draft);
+        setReceipt(v.receipt);
+        setPeople(v.people);
+        setSentence(v.sentence);
+        setShares(v.shares);
+        setAssignments(v.assignments);
+        setQuestion(v.question);
+      })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     const id = requestAnimationFrame(() => setPlayed(true));
     return () => cancelAnimationFrame(id);
@@ -420,11 +443,21 @@ export default function Home() {
       setSent(null);
     });
 
-  const onSend = () =>
+  const onSend = () => {
+    if (!user) {
+      // Keep the split while the user logs in with PayPal, then bring them back to it.
+      sessionStorage.setItem(DRAFT, JSON.stringify({ receipt, people, sentence, shares, assignments, question }));
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full navigation: the route redirects off-site to PayPal
+      location.href = "/api/auth/login?next=/%23split";
+      return;
+    }
     run("send", async () => {
       const owed = shares!.slice(1).filter((s) => s.totalCents > 0);
-      setSent(await post("/api/send", { shares: owed, currency: receipt!.currency, merchant: receipt!.merchant }));
+      const data = await post("/api/send", { shares: owed, currency: receipt!.currency, merchant: receipt!.merchant });
+      setSent(data.sent);
+      if (data.saveError) setError(data.saveError);
     });
+  };
 
   const onNudge = (id: string) => run(`nudge-${id}`, async () => void (await post("/api/invoices", { id })));
 
@@ -468,7 +501,11 @@ export default function Home() {
         <div className="a a-up flex items-center gap-2 text-sm font-medium" style={d(1900)}>
           <span className="hidden rounded-full border border-line px-4 py-2 sm:inline">Payments by PayPal</span>
           <ThemeToggle />
-          <a href="#split" className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">Split a bill</a>
+          {user ? (
+            <a href="/tabs" className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">My tabs</a>
+          ) : (
+            <a href="/api/auth/login?next=/tabs" className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">Log in with PayPal</a>
+          )}
         </div>
       </nav>
 
@@ -749,7 +786,7 @@ export default function Home() {
                       disabled={!!busy}
                       onClick={onSend}
                     >
-                      {busy === "send" ? "Sending requests…" : "Send PayPal requests"}
+                      {busy === "send" ? "Sending requests…" : user ? "Send PayPal requests" : "Log in with PayPal to send"}
                     </button>
                   )}
                 </>

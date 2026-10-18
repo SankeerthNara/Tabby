@@ -73,6 +73,40 @@ export async function sendInvoice(share: Share, currency: string, merchant: stri
   };
 }
 
+// ---- Log in with PayPal (OpenID Connect) ----
+const WEB = BASE.replace("api-m.", "www."); // https://www.sandbox.paypal.com or https://www.paypal.com
+
+export function loginUrl(redirectUri: string, state: string) {
+  const q = new URLSearchParams({
+    flowEntry: "static",
+    client_id: process.env.PAYPAL_CLIENT_ID ?? "",
+    response_type: "code",
+    scope: "openid profile email",
+    redirect_uri: redirectUri,
+    state,
+  });
+  return `${WEB}/signin/authorize?${q}`;
+}
+
+// Trade the login code for the user's PayPal identity (id, name, verified email).
+export async function loginUser(code: string): Promise<{ id: string; name: string; email: string }> {
+  const auth = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString("base64");
+  const tok = await fetch(`${BASE}/v1/oauth2/token`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code }),
+  });
+  if (!tok.ok) throw new Error(`PayPal login failed (${tok.status}).`);
+  const { access_token } = await tok.json();
+  const res = await fetch(`${BASE}/v1/identity/oauth2/userinfo?schema=paypalv1.1`, { headers: { Authorization: `Bearer ${access_token}` } });
+  if (!res.ok) throw new Error(`PayPal profile lookup failed (${res.status}).`);
+  const info = await res.json();
+  const emails: { value: string; primary?: boolean }[] = info.emails ?? [];
+  const email = (emails.find((e) => e.primary) ?? emails[0])?.value ?? info.email;
+  if (!info.user_id || !email) throw new Error("PayPal didn't share your email. Enable the Email scope for Log in with PayPal.");
+  return { id: info.user_id, name: info.name || email, email: email.toLowerCase() };
+}
+
 export async function invoiceStatus(id: string) {
   const inv = await call(`/v2/invoicing/invoices/${encodeURIComponent(id)}`);
   return { id, status: inv.status as string, payUrl: inv.detail?.metadata?.recipient_view_url as string | undefined };
