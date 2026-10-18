@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 
 // Pastel [background, text] pairs; each person keeps one tone on the receipt and in the shares list.
@@ -136,3 +136,38 @@ export function ThemeToggle() {
     </button>
   );
 }
+
+// Word-by-word reveal used for every big heading.
+export function Words({ lines, delay = 0 }: { lines: string[]; delay?: number }) {
+  let i = 0;
+  return lines.map((line, l) => (
+    <span key={l} className="block">
+      {line.split(" ").map((w, k) => (
+        <span key={k}>
+          <span className="a a-word inline-block" style={d(delay, { "--i": i++ } as CSSProperties)}>
+            {w}
+          </span>{" "}
+        </span>
+      ))}
+    </span>
+  ));
+}
+
+// Counts up to a value with the same expo-out feel as the rest of the motion.
+export function CountUp({ value, format, delay = 0 }: { value: number; format: (v: number) => string; delay?: number }) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const t0 = performance.now() + delay;
+    let raf = 0;
+    const tick = (t: number) => {
+      const k = still ? 1 : Math.min(1, Math.max(0, (t - t0) / 1000));
+      setV(Math.round(value * (k === 1 ? 1 : 1 - Math.pow(2, -10 * k))));
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, delay]);
+  return <>{format(v)}</>;
+}
+

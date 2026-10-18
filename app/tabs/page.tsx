@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { addTransitionType, startTransition, useCallback, useEffect, useState, ViewTransition } from "react";
-import { Asterisk, Avatar, ThemeToggle, TONES } from "../ui";
+import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d } from "../ui";
 
 type Share = {
   name: string;
@@ -46,6 +46,123 @@ function StatusPill({ s }: { s: Share }) {
   );
 }
 
+// Totals per currency (PayPal requests can be in USD even when the receipt was in INR).
+const sumBy = (shares: Share[]) =>
+  [...shares.reduce((m, s) => m.set(s.chargedCurrency, (m.get(s.chargedCurrency) ?? 0) + s.chargedCents), new Map<string, number>())];
+const waited = (from: number, now: number) => {
+  const days = Math.floor((now - from) / 86_400_000);
+  return days <= 0 ? "Waiting since today" : `Waiting ${days} day${days === 1 ? "" : "s"}`;
+};
+
+function Totals({ shares, delay }: { shares: Share[]; delay: number }) {
+  const sums = sumBy(shares);
+  if (!sums.length) return <>{money(0, "USD")}</>;
+  return sums.map(([cur, cents], i) => (
+    <span key={cur}>
+      {i > 0 && " + "}
+      <CountUp value={cents} format={(v) => money(v, cur)} delay={delay} />
+    </span>
+  ));
+}
+
+// Summary across every saved split: what's owed to you, what you owe, and how much has come back.
+function Summary({ data, onOwe }: { data: Data; onOwe: () => void }) {
+  const requested = data.paid.flatMap((sp) => sp.shares.filter((s) => s.status !== "CANCELLED"));
+  const open = requested.filter(isOpen);
+  const collected = requested.filter(isPaid);
+  const iOwe = data.owe.flatMap((sp) => sp.shares.filter(isOpen));
+  const pct = requested.length ? collected.length / requested.length : 0;
+  const debtors = [...new Set(open.map((s) => s.name))];
+  const openBills = data.paid.filter((sp) => sp.shares.some(isOpen)).length;
+
+  return (
+    <div className="mt-8 grid gap-4 lg:grid-cols-3">
+      <section className="relative overflow-hidden rounded-[2rem] p-7 text-white lg:col-span-2" aria-label="Owed to you">
+        <div aria-hidden className="a a-wipe absolute inset-0 rounded-[2rem] bg-blue" style={d(0)} />
+        <Asterisk className="absolute right-6 top-6 size-12 text-mint sm:size-16" delay={500} />
+        <Scribble className="absolute -bottom-6 right-40 hidden w-40 text-white/50 sm:block" delay={800} />
+        <div className="relative flex flex-wrap items-center justify-between gap-6">
+          <div>
+            <p className="a a-up text-sm font-semibold text-white/80" style={d(250)}>You&apos;re owed</p>
+            <p className="a a-up display mt-2 text-[clamp(2.2rem,5vw,3.5rem)]" style={d(320)}>
+              <Totals shares={open} delay={400} />
+            </p>
+            <p className="a a-up mt-2 text-white/80" style={d(420)}>
+              {open.length
+                ? `from ${debtors.length} ${debtors.length === 1 ? "person" : "people"} across ${openBills} ${openBills === 1 ? "bill" : "bills"}`
+                : "Nobody owes you anything right now."}
+            </p>
+            {debtors.length > 0 && (
+              <div className="mt-5 flex -space-x-2">
+                {debtors.slice(0, 5).map((n, i) => (
+                  <Avatar key={n} name={n} tone={TONES[(i + 1) % TONES.length]} className="a a-pop" style={d(550 + i * 80)} />
+                ))}
+                {debtors.length > 5 && (
+                  <span className="a a-pop grid size-9 place-items-center rounded-full bg-white/20 text-xs font-bold ring-2 ring-white/40" style={d(950)}>
+                    +{debtors.length - 5}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          {/* Ring draws itself up to the share of requests that have been paid. */}
+          <div
+            className="a a-ring grid size-36 shrink-0 place-items-center rounded-full sm:mr-16"
+            style={d(500, { background: `conic-gradient(var(--mint) 0 ${pct * 100}%, rgb(255 255 255 / 0.18) 0)` })}
+          >
+            <div className="grid size-[7.25rem] place-items-center rounded-full bg-blue text-center">
+              <div>
+                <p className="text-3xl font-bold tabular-nums">
+                  <CountUp value={Math.round(pct * 100)} format={(v) => `${v}%`} delay={600} />
+                </p>
+                <p className="text-xs text-white/80">collected</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4">
+        <button onClick={onOwe} className="a a-up rounded-[1.75rem] bg-surface p-6 text-left transition hover:-translate-y-0.5" style={d(200)}>
+          <p className="text-sm font-semibold text-muted">You owe</p>
+          <p className="mt-1 text-2xl font-bold">
+            <Totals shares={iOwe} delay={450} />
+          </p>
+          <p className="mt-1 text-sm text-muted">{iOwe.length ? `${iOwe.length} request${iOwe.length === 1 ? "" : "s"} waiting for you` : "You're all square."}</p>
+        </button>
+        <div className="a a-up rounded-[1.75rem] bg-surface p-6" style={d(300)}>
+          <p className="text-sm font-semibold text-muted">Collected</p>
+          <p className="mt-1 text-2xl font-bold">
+            <Totals shares={collected} delay={550} />
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            {collected.length} of {requested.length} payments in
+          </p>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-canvas">
+            <div className="a a-grow h-full origin-left rounded-full bg-mint" style={d(650, { width: `${pct * 100}%` })} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div role="status" aria-label="Loading your tabs" className="mt-8 space-y-4 motion-safe:animate-pulse">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="h-56 rounded-[2rem] bg-blue/25 lg:col-span-2" />
+        <div className="grid gap-4">
+          <div className="h-[6.5rem] rounded-[1.75rem] bg-surface" />
+          <div className="h-[6.5rem] rounded-[1.75rem] bg-surface" />
+        </div>
+      </div>
+      <div className="h-11 w-80 max-w-full rounded-full bg-surface" />
+      <div className="h-40 rounded-[1.75rem] bg-surface" />
+    </div>
+  );
+}
+
 export default function Tabs() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
@@ -57,9 +174,17 @@ export default function Tabs() {
     startTransition(() => {
       addTransitionType(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(tab) ? "tab-forward" : "tab-back");
       setTab(next);
+      setSwitched(true);
     });
   const [nudged, setNudged] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(0); // when data loaded, for "Waiting 3 days"
+  const [played, setPlayed] = useState(false);
+  const [switched, setSwitched] = useState(false); // cards only rise in on first load; tab switches slide instead
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setPlayed(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,10 +194,11 @@ export default function Tabs() {
     else if (!res?.ok) setError(body.error ?? "Couldn't load your tabs.");
     else {
       setData(body);
+      setNow(Date.now());
       setError("");
     }
     setLoading(false);
-  }, []);
+  }, [setLoading, setNow]);
 
   // Load once, and again when you come back to the tab (a friend may have paid meanwhile).
   useEffect(() => {
@@ -125,15 +251,28 @@ export default function Tabs() {
         </div>
       </nav>
 
-      <main className="mx-auto w-full max-w-5xl px-5 pb-24 pt-6 sm:px-8">
+      <main className={`mx-auto w-full max-w-5xl px-5 pb-24 pt-6 sm:px-8 ${played ? "play" : ""}`}>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="display text-[clamp(2.5rem,6vw,4.5rem)]">My tabs</h1>
-            {data && <p className="mt-2 text-muted">Logged in as {data.user.name} ({data.user.email})</p>}
+            <h1 className="display text-[clamp(2.5rem,6vw,4.5rem)]">
+              <Words lines={["My tabs"]} />
+            </h1>
+            {data && (
+              <p className="a a-up mt-2 text-muted" style={d(150)}>
+                Logged in as {data.user.name} ({data.user.email})
+              </p>
+            )}
           </div>
           {data && (
-            <button onClick={load} disabled={loading} className="rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-fg disabled:opacity-50">
-              {loading ? "Refreshing…" : "Refresh"}
+            <button
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-fg disabled:opacity-60"
+            >
+              <svg viewBox="0 0 24 24" className={`size-4 ${loading ? "motion-safe:animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" />
+              </svg>
+              {loading ? "Refreshing" : "Refresh"}
             </button>
           )}
         </div>
@@ -150,10 +289,11 @@ export default function Tabs() {
             {error}
           </p>
         ) : !data ? (
-          <p role="status" className="mt-10 text-muted motion-safe:animate-pulse">Loading your tabs…</p>
+          <Skeleton />
         ) : (
           <>
-            <div role="tablist" aria-label="Tabs" className="mt-8 flex gap-2 overflow-x-auto">
+            <Summary data={data} onOwe={() => switchTab("owe")} />
+            <div role="tablist" aria-label="Tabs" className={`mt-10 flex gap-2 overflow-x-auto ${switched ? "" : "a a-up"}`} style={d(400)}>
               {tabs.map(([key, label, count]) => (
                 <button
                   key={key}
@@ -177,22 +317,34 @@ export default function Tabs() {
             <ViewTransition key={tab} enter={TAB_SLIDE} exit={TAB_SLIDE} default="none">
             <div role="tabpanel" className="mt-6 space-y-4">
               {list.length === 0 && (
-                <div className="rounded-[1.75rem] bg-surface p-8 text-center text-muted">
-                  {tab === "pending" && "Nobody owes you anything right now."}
-                  {tab === "settled" && "Bills where everyone has paid show up here."}
-                  {tab === "owe" && "When a friend splits a bill with your PayPal email, it shows up here."}
+                <div className="rounded-[1.75rem] bg-surface px-8 py-12 text-center">
+                  <Asterisk className="mx-auto size-12 text-blue" delay={switched ? 150 : 500} />
+                  <p className="mt-5 text-lg font-semibold">
+                    {tab === "pending" && "Nobody owes you anything right now."}
+                    {tab === "settled" && "No fully paid bills yet."}
+                    {tab === "owe" && "You don't owe anyone. Nice."}
+                  </p>
+                  <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
+                    {tab === "pending" && "Split a bill and every friend gets a PayPal request. Their payments show up here."}
+                    {tab === "settled" && "Once everyone on a bill has paid, it moves here."}
+                    {tab === "owe" && "When a friend splits a bill with your PayPal email, it shows up here."}
+                  </p>
                   {tab !== "owe" && (
-                    <Link href="/#split" transitionTypes={["nav-back"]} className="mt-4 block font-semibold text-blue hover:underline">
+                    <Link
+                      href="/#split"
+                      transitionTypes={["nav-back"]}
+                      className="mt-6 inline-flex items-center gap-2 rounded-full bg-blue px-5 py-2.5 font-semibold text-white hover:brightness-110"
+                    >
                       Split a bill
                     </Link>
                   )}
                 </div>
               )}
 
-              {list.map((split) => {
+              {list.map((split, n) => {
                 const paidCount = split.shares.filter(isPaid).length;
                 return (
-                  <article key={split.id} className="rounded-[1.75rem] bg-surface p-6">
+                  <article key={split.id} className={`rounded-[1.75rem] bg-surface p-6 ${switched ? "" : "a a-up"}`} style={d(500 + n * 110)}>
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h2 className="text-xl font-bold">{split.merchant || "A bill"}</h2>
                       <p className="text-sm text-muted">
@@ -201,7 +353,10 @@ export default function Tabs() {
                     </div>
                     {tab !== "owe" && (
                       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-canvas">
-                        <div className="h-full rounded-full bg-mint" style={{ width: `${(paidCount / split.shares.length) * 100}%` }} />
+                        <div
+                          className={`h-full origin-left rounded-full bg-mint ${switched ? "" : "a a-grow"}`}
+                          style={d(700 + n * 110, { width: `${(paidCount / split.shares.length) * 100}%` })}
+                        />
                       </div>
                     )}
                     <ul className="mt-4 divide-y divide-line">
@@ -210,7 +365,10 @@ export default function Tabs() {
                           <Avatar name={tab === "owe" ? split.owner.name : s.name} tone={TONES[(i + 1) % TONES.length]} />
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold">{tab === "owe" ? `You owe ${split.owner.name}` : s.name}</p>
-                            <p className="truncate text-xs text-muted">{tab === "owe" ? split.owner.email : s.email}</p>
+                            <p className="truncate text-xs text-muted">
+                              {tab === "owe" ? split.owner.email : s.email}
+                              {isOpen(s) && now > 0 && <span className="text-[#946200] dark:text-[#e2b84a]"> · {waited(split.createdAt, now)}</span>}
+                            </p>
                           </div>
                           <Amount s={s} currency={split.currency} />
                           <div className="flex w-full items-center justify-end gap-2 sm:w-auto">

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, ViewTransition, type
 import type { Person, Portion, Receipt, Share } from "@/lib/split";
 import { joinTranscripts } from "@/lib/transcript";
 import HowItWorks from "./HowItWorks";
-import { Asterisk, Avatar, Scribble, ThemeToggle, TONES, d } from "./ui";
+import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d } from "./ui";
 
 type Sent = {
   name: string;
@@ -65,40 +65,6 @@ function useInView<T extends Element>() {
     return () => io.disconnect();
   }, []);
   return [ref, inView ? "play" : ""] as const;
-}
-
-// Word-by-word reveal used for every big heading.
-function Words({ lines, delay = 0 }: { lines: string[]; delay?: number }) {
-  let i = 0;
-  return lines.map((line, l) => (
-    <span key={l} className="block">
-      {line.split(" ").map((w, k) => (
-        <span key={k}>
-          <span className="a a-word inline-block" style={d(delay, { "--i": i++ } as CSSProperties)}>
-            {w}
-          </span>{" "}
-        </span>
-      ))}
-    </span>
-  ));
-}
-
-// Counts up to a value with the same expo-out feel as the rest of the motion.
-function CountUp({ value, format, delay = 0 }: { value: number; format: (v: number) => string; delay?: number }) {
-  const [v, setV] = useState(0);
-  useEffect(() => {
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const t0 = performance.now() + delay;
-    let raf = 0;
-    const tick = (t: number) => {
-      const k = still ? 1 : Math.min(1, Math.max(0, (t - t0) / 1000));
-      setV(Math.round(value * (k === 1 ? 1 : 1 - Math.pow(2, -10 * k))));
-      if (k < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value, delay]);
-  return <>{format(v)}</>;
 }
 
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
