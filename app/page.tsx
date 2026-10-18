@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState, useSyncExternalStore, ViewTransition, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import type { Person, Portion, Receipt, Share } from "@/lib/split";
 import { joinTranscripts } from "@/lib/transcript";
@@ -21,6 +22,8 @@ type Sent = {
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
 const DRAFT = "tabby-draft";
+// Home <-> My tabs slide; links pick the direction with transitionTypes, other navigations don't animate.
+const SLIDE = { "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" };
 // Phone photos are huge; shrink to 1600px JPEG first.
 async function shrink(file: File): Promise<Blob> {
   const img = await createImageBitmap(file);
@@ -486,8 +489,9 @@ export default function Home() {
   const totalCents = shares?.reduce((a, s) => a + s.totalCents, 0) ?? 0;
 
   return (
-    <>
-      <nav className={`mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 sm:px-8 ${played ? "play" : ""}`}>
+    <ViewTransition enter={SLIDE} exit={SLIDE} default="none">
+    <div className="flex flex-1 flex-col">
+      <nav className={`mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 sm:px-8 ${played ? "play" : ""}`} style={{ viewTransitionName: "site-nav" }}>
         <a href="#" className="a a-up flex items-center gap-2 text-xl font-bold" style={d(1700)}>
           <span className="grid size-8 place-items-center rounded-lg bg-blue text-white">
             <Asterisk className="size-4" />
@@ -502,7 +506,14 @@ export default function Home() {
           <span className="hidden rounded-full border border-line px-4 py-2 sm:inline">Payments by PayPal</span>
           <ThemeToggle />
           {user ? (
-            <a href="/tabs" className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">My tabs</a>
+            <>
+              <Link href="/tabs" transitionTypes={["nav-forward"]} className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">
+                My tabs
+              </Link>
+              <form action="/api/auth/logout" method="post">
+                <button className="rounded-full border border-line px-4 py-2 hover:border-fg">Log out</button>
+              </form>
+            </>
           ) : (
             <a href="/api/auth/login?next=/tabs" className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">Log in with PayPal</a>
           )}
@@ -797,6 +808,7 @@ export default function Home() {
       </section>
       <HowItWorks />
       <ScrollTop />
-    </>
+    </div>
+    </ViewTransition>
   );
 }

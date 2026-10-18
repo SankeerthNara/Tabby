@@ -13,6 +13,6 @@ export async function GET(req: Request) {
   const opts = { httpOnly: true, secure: url.protocol === "https:", sameSite: "lax" as const, maxAge: 600, path: "/" };
   res.cookies.set(STATE_COOKIE, state, opts);
   // only same-site paths, so the login can't bounce users to another site
-  res.cookies.set("tabby_next", next?.startsWith("/") && !next.startsWith("//") ? next : "/tabs", opts);
+  res.cookies.set("tabby_next", next?.startsWith("/") && !next.startsWith("//") ? next : "/", opts);
   return res;
 }

@@ -7,8 +7,8 @@ import { encodeSession, SESSION_COOKIE, SESSION_SECONDS, sessionSecret } from "@
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const jar = await cookies();
-  const next = jar.get("tabby_next")?.value ?? "/tabs";
-  const fail = (why: string) => NextResponse.redirect(new URL(`/?login=${encodeURIComponent(why)}`, url.origin));
+  const next = jar.get("tabby_next")?.value ?? "/";
+  const fail = (why: string) => NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(why)}`, url.origin));
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");

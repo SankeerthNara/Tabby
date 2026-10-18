@@ -187,3 +187,51 @@ body {
   outline: 3px solid var(--blue);
   outline-offset: 2px;
 }
+
+/* ---------- Page slide between Home and My tabs (React <ViewTransition>) ----------
+   Old page leaves fast, new page arrives a beat later; the nav stays put as the anchor. */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(.nav-forward),
+::view-transition-old(.nav-back) {
+  animation:
+    180ms ease-in both vt-fade reverse,
+    420ms var(--ease) both vt-slide reverse;
+}
+::view-transition-new(.nav-forward),
+::view-transition-new(.nav-back) {
+  animation:
+    260ms ease-out 140ms both vt-fade,
+    520ms var(--ease) both vt-slide;
+}
+::view-transition-old(.nav-forward) { --vt-x: -80px; }
+::view-transition-new(.nav-forward) { --vt-x: 80px; }
+::view-transition-old(.nav-back) { --vt-x: 80px; }
+::view-transition-new(.nav-back) { --vt-x: -80px; }
+@keyframes vt-fade {
+  from { opacity: 0; filter: blur(4px); }
+  to { opacity: 1; filter: none; }
+}
+@keyframes vt-slide {
+  from { translate: var(--vt-x) 0; }
+  to { translate: 0 0; }
+}
+::view-transition-group(site-nav) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(site-nav) {
+  display: none;
+}
+::view-transition-new(site-nav) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+}

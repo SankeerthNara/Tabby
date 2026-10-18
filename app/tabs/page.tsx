@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, ViewTransition } from "react";
 import { Asterisk, Avatar, TONES } from "../ui";
 
 type Share = {
@@ -18,6 +18,8 @@ type Split = { id: string; owner: { name: string; email: string }; merchant: str
 type Data = { user: { name: string; email: string }; paid: Split[]; owe: Split[] };
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
+// Same slide as the home page: forward into My tabs, back out to Split a bill.
+const SLIDE = { "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" };
 const isPaid = (s: Share) => PAID.includes(s.status);
 const isOpen = (s: Share) => !isPaid(s) && s.status !== "CANCELLED";
 const money = (cents: number, currency: string) => new Intl.NumberFormat(undefined, { style: "currency", currency }).format(cents / 100);
@@ -91,16 +93,17 @@ export default function Tabs() {
   const list = tab === "pending" ? pending : tab === "settled" ? settled : owe;
 
   return (
-    <>
-      <nav className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-5 sm:px-8">
-        <Link href="/" className="flex items-center gap-2 text-xl font-bold">
+    <ViewTransition enter={SLIDE} exit={SLIDE} default="none">
+    <div className="flex flex-1 flex-col">
+      <nav className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-5 sm:px-8" style={{ viewTransitionName: "site-nav" }}>
+        <Link href="/" transitionTypes={["nav-back"]} className="flex items-center gap-2 text-xl font-bold">
           <span className="grid size-8 place-items-center rounded-lg bg-blue text-white">
             <Asterisk className="size-4" />
           </span>
           Tabby
         </Link>
         <div className="flex items-center gap-2 text-sm font-medium">
-          <Link href="/#split" className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">
+          <Link href="/#split" transitionTypes={["nav-back"]} className="rounded-full bg-fg px-4 py-2 text-surface hover:bg-blue hover:text-white">
             Split a bill
           </Link>
           {data && (
@@ -161,7 +164,7 @@ export default function Tabs() {
                   {tab === "settled" && "Bills where everyone has paid show up here."}
                   {tab === "owe" && "When a friend splits a bill with your PayPal email, it shows up here."}
                   {tab !== "owe" && (
-                    <Link href="/#split" className="mt-4 block font-semibold text-blue hover:underline">
+                    <Link href="/#split" transitionTypes={["nav-back"]} className="mt-4 block font-semibold text-blue hover:underline">
                       Split a bill
                     </Link>
                   )}
@@ -222,6 +225,7 @@ export default function Tabs() {
           </>
         )}
       </main>
-    </>
+    </div>
+    </ViewTransition>
   );
 }
