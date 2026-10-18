@@ -2,10 +2,12 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { currentUser } from "@/lib/auth";
 import { invoiceFx, sendInvoice } from "@/lib/paypal";
-import { saveSplit } from "@/lib/store";
+import { saveFriends, saveSplit } from "@/lib/store";
 
 const Body = z.object({
   currency: z.string().length(3),
+  // who paid the restaurant; defaults to the logged-in user
+  payer: z.object({ name: z.string().trim().min(1).max(40), email: z.string().email() }).optional(),
   merchant: z.string(),
   shares: z
     .array(
@@ -27,6 +29,8 @@ export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Every friend needs a valid email and something to pay." }, { status: 400 });
   const { shares, currency, merchant } = parsed.data;
+  const payer = parsed.data.payer ?? { name: user.name, email: user.email };
+  const paidByOther = payer.email.toLowerCase() !== user.email;
 
   let fx;
   try {
@@ -34,7 +38,7 @@ export async function POST(req: Request) {
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 502 });
   }
-  const results = await Promise.allSettled(shares.map((s) => sendInvoice(s, currency, merchant, fx)));
+  const results = await Promise.allSettled(shares.map((s) => sendInvoice(s, currency, merchant, fx, paidByOther ? payer.name : undefined)));
   const sent = results.map((r, i) => ({
     name: shares[i].name,
     email: shares[i].email,
@@ -50,11 +54,14 @@ export async function POST(req: Request) {
       await saveSplit({
         id: randomUUID(),
         owner: user,
+        payer: { name: payer.name, email: payer.email.toLowerCase() },
         merchant,
         currency,
         createdAt: Date.now(),
         shares: ok.map(({ name, email, invoiceId, payUrl, totalCents, chargedCents, chargedCurrency }) => ({ name, email, invoiceId, payUrl, totalCents, chargedCents, chargedCurrency })),
       });
+      // Everyone on the bill becomes a saved friend, so next time it's one tap.
+      await saveFriends(user, [...shares.map(({ name, email }) => ({ name, email })), payer]);
     } catch (e) {
       saveError = `Requests sent, but couldn't save to My tabs: ${(e as Error).message}`;
     }

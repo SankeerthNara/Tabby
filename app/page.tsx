@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, ViewTransition, type CSSProperties } from "react";
 import type { Person, Portion, Receipt, Share } from "@/lib/split";
+import type { Friend, Group } from "@/lib/store";
 import { joinTranscripts } from "@/lib/transcript";
 import HowItWorks from "./HowItWorks";
 import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d } from "./ui";
@@ -299,6 +300,20 @@ function Home() {
   const [error, setError] = useState("");
   const [played, setPlayed] = useState(false);
   const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const [payer, setPayer] = useState(0); // index in people of who paid the restaurant; you by default
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupName, setGroupName] = useState<string | null>(null); // non-null while naming a new group
+  const [note, setNote] = useState("");
+  const loadFriends = () =>
+    fetch("/api/friends")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setFriends(d.friends);
+        setGroups(d.groups);
+      })
+      .catch(() => {});
   const [appRef, appPlay] = useInView<HTMLElement>();
   // Who's logged in, plus restore a split saved before going off to "Log in with PayPal".
   useEffect(() => {
@@ -306,6 +321,10 @@ function Home() {
       .then((r) => r.json())
       .then((d) => {
         setUser(d.user);
+        if (d.user) {
+          setPeople((ps) => (ps[0].name === "Me" ? [{ ...ps[0], name: d.user.name }, ...ps.slice(1)] : ps));
+          loadFriends();
+        }
         const failed = new URLSearchParams(location.search).get("login");
         if (failed) setError(`Couldn't log in with PayPal: ${failed}`);
         const draft = sessionStorage.getItem(DRAFT);
@@ -318,6 +337,7 @@ function Home() {
         setShares(v.shares);
         setAssignments(v.assignments);
         setQuestion(v.question);
+        setPayer(v.payer ?? 0);
       })
       .catch(() => {});
   }, []);
@@ -365,16 +385,26 @@ function Home() {
   const onSend = () => {
     if (!user) {
       // Keep the split while the user logs in with PayPal, then bring them back to it.
-      sessionStorage.setItem(DRAFT, JSON.stringify({ receipt, people, sentence, shares, assignments, question }));
+      sessionStorage.setItem(DRAFT, JSON.stringify({ receipt, people, sentence, shares, assignments, question, payer }));
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full navigation: the route redirects off-site to PayPal
       location.href = "/api/auth/login?next=/%23split";
       return;
     }
     run("send", async () => {
-      const owed = shares!.slice(1).filter((s) => s.totalCents > 0);
-      const data = await post("/api/send", { shares: owed, currency: receipt!.currency, merchant: receipt!.merchant });
+      const paidBy = people[payer];
+      if (payer !== 0 && !/^\S+@\S+\.\S+$/.test(paidBy.email)) throw new Error(`Add ${paidBy.name || "the payer"}'s PayPal email, so the split shows up in their tabs.`);
+      const owed = shares!
+        .map((s, i) => (i === 0 ? { ...s, email: user.email } : s))
+        .filter((s, i) => i !== payer && s.totalCents > 0);
+      const data = await post("/api/send", {
+        shares: owed,
+        currency: receipt!.currency,
+        merchant: receipt!.merchant,
+        payer: payer === 0 ? undefined : { name: paidBy.name, email: paidBy.email },
+      });
       setSent(data.sent);
       if (data.saveError) setError(data.saveError);
+      loadFriends(); // everyone you just billed is now a saved friend
     });
   };
 
@@ -393,6 +423,42 @@ function Home() {
 
   const setPerson = (i: number, patch: Partial<Person>) =>
     setPeople((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const removePerson = (i: number) => {
+    setPeople((ps) => ps.filter((_, j) => j !== i));
+    setPayer((pi) => (pi === i ? 0 : pi > i ? pi - 1 : pi));
+  };
+  // Typing a saved friend's name fills in their email.
+  const onName = (i: number, name: string) => {
+    const f = friends.find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
+    setPerson(i, f && !people[i].email ? { name, email: f.email } : { name });
+  };
+  const inRows = new Set(people.map((p) => p.email.toLowerCase()).filter(Boolean));
+  const recent = friends.filter((f) => !inRows.has(f.email)).slice(0, 6);
+  const addFriend = (f: Person) =>
+    setPeople((ps) => {
+      const empty = ps.findIndex((p, j) => j > 0 && !p.name && !p.email);
+      return empty > 0 ? ps.map((p, j) => (j === empty ? { name: f.name, email: f.email } : p)) : [...ps, { name: f.name, email: f.email }];
+    });
+  // Picking a group seats exactly its members at the table (you stay in the first row).
+  const seatGroup = (id: string) => {
+    const g = groups.find((x) => x.id === id);
+    if (!g) return;
+    const members = g.members.filter((m) => m.email.toLowerCase() !== user?.email);
+    setPeople((ps) => [ps[0], ...(members.length ? members.map((m) => ({ ...m })) : [{ name: "", email: "" }])]);
+    setPayer(0);
+    setNote(`Seated ${g.name}: ${members.map((m) => m.name).join(", ")}`);
+  };
+  const tableFriends = people.slice(1).filter((p) => p.name.trim() && /^\S+@\S+\.\S+$/.test(p.email));
+  const saveAsGroup = () =>
+    run("group", async () => {
+      const name = groupName!.trim();
+      if (!name) throw new Error("Give the group a name, like Goa trip.");
+      const d = await post("/api/friends", { action: "saveGroup", group: { name, members: tableFriends.map(({ name, email }) => ({ name, email })) } });
+      setGroups(d.groups);
+      setFriends(d.friends);
+      setGroupName(null);
+      setNote(`Saved group ${name}. Pick it next time to seat everyone at once.`);
+    });
 
   const field =
     "w-full rounded-xl bg-canvas px-3.5 py-2.5 text-sm text-fg placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-blue";
@@ -556,22 +622,56 @@ function Home() {
 
             {/* People + who had what */}
             <div className={`${card} a a-up`} style={d(390)}>
-              <h3 className="text-lg font-bold">Who&apos;s at the table?</h3>
-              <ul className="mt-4 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-lg font-bold">Who&apos;s at the table?</h3>
+                {groups.length > 0 && (
+                  <select
+                    aria-label="Use a group"
+                    value=""
+                    onChange={(e) => seatGroup(e.target.value)}
+                    className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue"
+                  >
+                    <option value="">Use a group</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.members.length})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {recent.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Recent friends">
+                  {recent.map((f) => (
+                    <button
+                      key={f.email}
+                      onClick={() => addFriend(f)}
+                      title={f.email}
+                      className="flex items-center gap-1.5 rounded-full border border-line py-1 pl-1 pr-3 text-xs font-semibold hover:border-fg"
+                    >
+                      <Avatar name={f.name} tone={TONES[(friends.indexOf(f) + 1) % TONES.length]} size="size-6" />+ {f.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <ul className="mt-4 space-y-3" role="radiogroup" aria-label="Who paid the bill">
                 {people.map((p, i) => (
-                  <li key={i} className="flex items-center gap-2">
+                  <li key={i} className="flex items-start gap-2">
                     <Avatar name={p.name} tone={TONES[i % TONES.length]} />
-                    <input
-                      className={`${field} max-w-28`}
-                      placeholder="Name"
-                      aria-label={i === 0 ? "Your name" : `Friend ${i} name`}
-                      value={p.name}
-                      onChange={(e) => setPerson(i, { name: e.target.value })}
-                    />
-                    {i === 0 ? (
-                      <span className="text-sm text-muted">paid the bill</span>
-                    ) : (
-                      <>
+                    <div className="grid min-w-0 flex-1 gap-1.5">
+                      <input
+                        className={field}
+                        placeholder="Name"
+                        list="tabby-friends"
+                        aria-label={i === 0 ? "Your name" : `Friend ${i} name`}
+                        value={p.name}
+                        onChange={(e) => onName(i, e.target.value)}
+                      />
+                      {i === 0 ? (
+                        <p className="truncate px-1 text-xs text-muted">{user ? `You · ${user.email}` : "You"}</p>
+                      ) : (
                         <input
                           className={field}
                           type="email"
@@ -580,23 +680,74 @@ function Home() {
                           value={p.email}
                           onChange={(e) => setPerson(i, { email: e.target.value })}
                         />
-                        {people.length > 2 && (
-                          <button
-                            className="grid size-8 shrink-0 place-items-center rounded-full text-xl text-muted hover:bg-canvas hover:text-fg"
-                            aria-label={`Remove ${p.name || `friend ${i}`}`}
-                            onClick={() => setPeople(people.filter((_, j) => j !== i))}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </>
+                      )}
+                    </div>
+                    <button
+                      role="radio"
+                      aria-checked={payer === i}
+                      aria-label={`${p.name || (i === 0 ? "You" : `Friend ${i}`)} paid the bill`}
+                      onClick={() => setPayer(i)}
+                      className={`mt-1 shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                        payer === i ? "bg-blue text-white" : "border border-line text-muted hover:border-fg hover:text-fg"
+                      }`}
+                    >
+                      {payer === i ? "Paid ✓" : "Paid"}
+                    </button>
+                    {i > 0 && people.length > 2 && (
+                      <button
+                        className="mt-1 grid size-8 shrink-0 place-items-center rounded-full text-xl text-muted hover:bg-canvas hover:text-fg"
+                        aria-label={`Remove ${p.name || `friend ${i}`}`}
+                        onClick={() => removePerson(i)}
+                      >
+                        ×
+                      </button>
                     )}
                   </li>
                 ))}
               </ul>
-              <button className="mt-3 self-start text-sm font-semibold text-blue hover:underline" onClick={() => setPeople([...people, { name: "", email: "" }])}>
-                + Add a friend
-              </button>
+              <datalist id="tabby-friends">
+                {friends.map((f) => (
+                  <option key={f.email} value={f.name}>
+                    {f.email}
+                  </option>
+                ))}
+              </datalist>
+              <p className="mt-2 text-xs text-muted">Tap Paid next to whoever paid the restaurant. Everyone else gets a PayPal request.</p>
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <button className="text-sm font-semibold text-blue hover:underline" onClick={() => setPeople([...people, { name: "", email: "" }])}>
+                  + Add a friend
+                </button>
+                {user && tableFriends.length > 0 && groupName === null && (
+                  <button className="text-sm font-semibold text-blue hover:underline" onClick={() => setGroupName("")}>
+                    Save these people as a group
+                  </button>
+                )}
+              </div>
+              {groupName !== null && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    className={field}
+                    autoFocus
+                    placeholder="Group name, like Goa trip"
+                    aria-label="Group name"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveAsGroup()}
+                  />
+                  <button className="shrink-0 rounded-full bg-blue px-4 text-sm font-semibold text-white disabled:opacity-40" disabled={busy === "group"} onClick={saveAsGroup}>
+                    Save
+                  </button>
+                  <button className="shrink-0 rounded-full border border-line px-3 text-sm font-semibold" onClick={() => setGroupName(null)}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {note && (
+                <p role="status" className="mt-2 text-xs font-semibold text-[#0f7a55] dark:text-mint">
+                  {note}
+                </p>
+              )}
 
               <div className="mt-8 flex items-center justify-between gap-3">
                 <h3 className="text-lg font-bold">Who had what?</h3>
@@ -657,7 +808,9 @@ function Home() {
                             <Avatar name={s.name} tone={tone(s.name)} />
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold">{s.name}{i === 0 && " (you)"}</p>
-                              <p className="truncate text-xs text-muted">{i === 0 ? "Paid the bill" : s.email || "Add their PayPal email"}</p>
+                              <p className="truncate text-xs text-muted">
+                                {i === payer ? "Paid the bill" : i === 0 ? (user?.email ?? "You") : s.email || "Add their PayPal email"}
+                              </p>
                               {st?.chargedCurrency && st.chargedCurrency !== receipt?.currency && st.chargedCents !== undefined && (
                                 <p className="text-xs font-semibold text-blue">
                                   Requested as{" "}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { addTransitionType, startTransition, useCallback, useEffect, useState, ViewTransition } from "react";
 import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d } from "../ui";
+import Friends from "./Friends";
 
 type Share = {
   name: string;
@@ -14,13 +15,13 @@ type Share = {
   chargedCurrency: string;
   status: string;
 };
-type Split = { id: string; owner: { name: string; email: string }; merchant: string; currency: string; createdAt: number; shares: Share[] };
+type Split = { id: string; owner: { name: string; email: string }; payer?: { name: string; email: string }; merchant: string; currency: string; createdAt: number; shares: Share[] };
 type Data = { user: { name: string; email: string }; paid: Split[]; owe: Split[] };
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
 // Same slide as the home page: forward into My tabs, back out to Split a bill.
-type Tab = "pending" | "settled" | "owe";
-const TAB_ORDER: Tab[] = ["pending", "settled", "owe"];
+type Tab = "pending" | "settled" | "owe" | "friends";
+const TAB_ORDER: Tab[] = ["pending", "settled", "owe", "friends"];
 const TAB_SLIDE = { "tab-forward": "tab-forward", "tab-back": "tab-back", default: "none" };
 const SLIDE = { "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" };
 const isPaid = (s: Share) => PAID.includes(s.status);
@@ -178,6 +179,7 @@ export default function Tabs() {
     });
   const [nudged, setNudged] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [friendCount, setFriendCount] = useState(0);
   const [now, setNow] = useState(0); // when data loaded, for "Waiting 3 days"
   const [played, setPlayed] = useState(false);
   const [switched, setSwitched] = useState(false); // cards only rise in on first load; tab switches slide instead
@@ -188,6 +190,10 @@ export default function Tabs() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    fetch("/api/friends")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((f) => f && setFriendCount(f.friends.length))
+      .catch(() => {});
     const res = await fetch("/api/tabs").catch(() => null);
     const body = res ? await res.json().catch(() => ({})) : {};
     if (res?.status === 401) setLoggedOut(true);
@@ -198,7 +204,7 @@ export default function Tabs() {
       setError("");
     }
     setLoading(false);
-  }, [setLoading, setNow]);
+  }, [setLoading, setNow, setFriendCount]);
 
   // Load once, and again when you come back to the tab (a friend may have paid meanwhile).
   useEffect(() => {
@@ -225,8 +231,9 @@ export default function Tabs() {
     ["pending", "Pending", pending.length],
     ["settled", "Settled", settled.length],
     ["owe", "You owe", owe.filter((s) => s.shares.some(isOpen)).length],
+    ["friends", "Friends", friendCount],
   ] as const;
-  const list = tab === "pending" ? pending : tab === "settled" ? settled : owe;
+  const list = tab === "pending" ? pending : tab === "settled" ? settled : tab === "owe" ? owe : [];
 
   return (
     <ViewTransition enter={SLIDE} exit={SLIDE} default="none">
@@ -316,7 +323,8 @@ export default function Tabs() {
             {/* Keyed on the tab: the old list slides out and the new one slides in, toward the tab you picked. */}
             <ViewTransition key={tab} enter={TAB_SLIDE} exit={TAB_SLIDE} default="none">
             <div role="tabpanel" className="mt-6 space-y-4">
-              {list.length === 0 && (
+              {tab === "friends" && <Friends onCount={setFriendCount} />}
+              {tab !== "friends" && list.length === 0 && (
                 <div className="rounded-[1.75rem] bg-surface px-8 py-12 text-center">
                   <Asterisk className="mx-auto size-12 text-blue" delay={switched ? 150 : 500} />
                   <p className="mt-5 text-lg font-semibold">
@@ -348,7 +356,7 @@ export default function Tabs() {
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h2 className="text-xl font-bold">{split.merchant || "A bill"}</h2>
                       <p className="text-sm text-muted">
-                        {tab === "owe" ? `${split.owner.name} paid, ${day(split.createdAt)}` : `${day(split.createdAt)}, ${paidCount} of ${split.shares.length} paid`}
+                        {tab === "owe" ? `${(split.payer ?? split.owner).name} paid, ${day(split.createdAt)}` : `${day(split.createdAt)}, ${paidCount} of ${split.shares.length} paid`}
                       </p>
                     </div>
                     {tab !== "owe" && (
@@ -362,11 +370,11 @@ export default function Tabs() {
                     <ul className="mt-4 divide-y divide-line">
                       {split.shares.map((s, i) => (
                         <li key={s.invoiceId} className="flex flex-wrap items-center gap-3 py-3">
-                          <Avatar name={tab === "owe" ? split.owner.name : s.name} tone={TONES[(i + 1) % TONES.length]} />
+                          <Avatar name={tab === "owe" ? (split.payer ?? split.owner).name : s.name} tone={TONES[(i + 1) % TONES.length]} />
                           <div className="min-w-0 flex-1">
-                            <p className="font-semibold">{tab === "owe" ? `You owe ${split.owner.name}` : s.name}</p>
+                            <p className="font-semibold">{tab === "owe" ? `You owe ${(split.payer ?? split.owner).name}` : s.name}</p>
                             <p className="truncate text-xs text-muted">
-                              {tab === "owe" ? split.owner.email : s.email}
+                              {tab === "owe" ? (split.payer ?? split.owner).email : s.email}
                               {isOpen(s) && now > 0 && <span className="text-[#946200] dark:text-[#e2b84a]"> · {waited(split.createdAt, now)}</span>}
                             </p>
                           </div>

@@ -48,12 +48,12 @@ export async function invoiceFx(currency: string): Promise<Fx> {
 }
 
 // shortcut: a negative line (discount bigger than tax+tip) is rejected by PayPal; fold it into an invoice discount if that shows up.
-export async function sendInvoice(share: Share, currency: string, merchant: string, fx: Fx = { currency, rate: 1 }) {
+export async function sendInvoice(share: Share, currency: string, merchant: string, fx: Fx = { currency, rate: 1 }, paidBy?: string) {
   const converted = fx.currency !== currency;
   const chargedCents = converted ? Math.round(share.totalCents * fx.rate) : share.totalCents;
   // Spread the converted total over the lines so they still add up exactly.
   const lineCents = converted ? allocate(chargedCents, share.lines.map((l) => l.cents)) : share.lines.map((l) => l.cents);
-  const note = `Your share of ${merchant || "the bill"}, split by Tabby.` + (converted ? ` Converted from ${show(share.totalCents, currency)} at 1 ${currency} = ${fx.rate} USD (ECB rate).` : "");
+  const note = `Your share of ${merchant || "the bill"}${paidBy ? `, paid by ${paidBy}` : ""}, split by Tabby.` + (converted ? ` Converted from ${show(share.totalCents, currency)} at 1 ${currency} = ${fx.rate} USD (ECB rate).` : "");
   const invoice = await call("/v2/invoicing/invoices", "POST", {
     detail: { currency_code: fx.currency, note },
     primary_recipients: [{ billing_info: { email_address: share.email, name: { given_name: share.name } } }],
