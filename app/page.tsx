@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, ViewTransition, type CSSProperties } from "react";
-import type { Person, Portion, Receipt, Share } from "@/lib/split";
+import { addItem, removeItem, setExtra, setItem, splitBill, type Person, type Portion, type Receipt, type Share } from "@/lib/split";
 import type { Friend, Group } from "@/lib/store";
 import { joinTranscripts } from "@/lib/transcript";
 import HowItWorks from "./HowItWorks";
@@ -296,6 +296,8 @@ function Home() {
   const [sentence, setSentence] = useState("");
   const [shares, setShares] = useState<Share[] | null>(null);
   const [assignments, setAssignments] = useState<Portion[][]>([]);
+  const [extraTip, setExtraTip] = useState(0); // "add 18% tip" as the AI understood it
+  const [editingItem, setEditingItem] = useState<number | null>(null); // receipt line open in the review editor
   const [question, setQuestion] = useState("");
   const [sent, setSent] = useState<Sent[] | null>(null);
   const [busy, setBusy] = useState("");
@@ -342,6 +344,7 @@ function Home() {
         setAssignments(v.assignments);
         setQuestion(v.question);
         setPayer(v.payer ?? 0);
+        setExtraTip(v.extraTip ?? 0);
       })
       .catch(() => {});
   }, []);
@@ -382,6 +385,8 @@ function Home() {
       const data = await post("/api/split", { receipt, people, sentence });
       setShares(data.shares);
       setAssignments(data.assignments);
+      setExtraTip(data.tip ?? 0);
+      setEditingItem(null);
       setQuestion(data.question);
       setSent(null);
     });
@@ -389,7 +394,7 @@ function Home() {
   const onSend = () => {
     if (!user) {
       // Keep the split while the user logs in with PayPal, then bring them back to it.
-      sessionStorage.setItem(DRAFT, JSON.stringify({ receipt, people, sentence, shares, assignments, question, payer }));
+      sessionStorage.setItem(DRAFT, JSON.stringify({ receipt, people, sentence, shares, assignments, question, payer, extraTip }));
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full navigation: the route redirects off-site to PayPal
       location.href = "/api/auth/login?next=/%23split";
       return;
@@ -434,6 +439,24 @@ function Home() {
 
   const setPerson = (i: number, patch: Partial<Person>) =>
     setPeople((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  // ---- Review step: fix the AI's reading before any request goes out. Re-splits locally, no AI call. ----
+  const reviewing = !!receipt && !!shares && !sent;
+  const applyReview = (r: Receipt, a: Portion[][]) => {
+    setReceipt(r);
+    setAssignments(a);
+    setShares(splitBill(r, a, people, extraTip));
+  };
+  // Units per person for line i; no assignment means everyone shared it equally.
+  const unitsOf = (i: number) =>
+    people.map((p) => ({ name: p.name, units: assignments[i]?.length ? (assignments[i].find((x) => x.name === p.name)?.units ?? 0) : 1 }));
+  const setUnits = (i: number, name: string, units: number) => {
+    const next = unitsOf(i)
+      .map((x) => (x.name === name ? { ...x, units: Math.max(0, units) } : x))
+      .filter((x) => x.units > 0);
+    applyReview(receipt!, receipt!.items.map((_, j) => (j === i ? next : (assignments[j] ?? []))));
+  };
+  const money = (v: string) => (Number.isFinite(parseFloat(v)) ? Math.round(parseFloat(v) * 100) / 100 : null);
+
   const removePerson = (i: number) => {
     setPeople((ps) => ps.filter((_, j) => j !== i));
     setPayer((pi) => (pi === i ? 0 : pi > i ? pi - 1 : pi));
@@ -605,33 +628,146 @@ function Home() {
               ) : (
                 <div className="mt-4 text-sm">
                   <p className="font-semibold">{receipt.merchant || "Your receipt"}</p>
+                  {reviewing && (
+                    <p className="mt-1 text-xs text-muted">Check what the AI read. Tap Edit on a line to fix its price or who had it.</p>
+                  )}
                   <ul className="mt-3 divide-y divide-line">
                     {receipt.items.map((it, i) => {
                       const who: Portion[] = assignments.length ? (assignments[i]?.length ? assignments[i] : people.map((p) => ({ name: p.name, units: 1 }))) : [];
+                      if (reviewing && editingItem === i) {
+                        const units = unitsOf(i);
+                        return (
+                          <li key={i} className="py-2.5">
+                            <div className="menu-in grid gap-2.5 rounded-xl bg-canvas p-3">
+                              <div className="flex gap-2">
+                                <input
+                                  key={`name-${i}`}
+                                  className="min-w-0 flex-1 rounded-lg bg-surface px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue"
+                                  aria-label="Item name"
+                                  defaultValue={it.name}
+                                  onChange={(e) => applyReview(setItem(receipt, i, { ...it, name: e.target.value || it.name }), assignments)}
+                                />
+                                <input
+                                  key={`price-${i}`}
+                                  className="w-24 rounded-lg bg-surface px-3 py-2 text-right text-sm tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-blue"
+                                  aria-label="Item price"
+                                  inputMode="decimal"
+                                  defaultValue={it.price.toFixed(2)}
+                                  onChange={(e) => {
+                                    const price = money(e.target.value);
+                                    if (price !== null) applyReview(setItem(receipt, i, { ...it, price }), assignments);
+                                  }}
+                                />
+                              </div>
+                              <p className="text-xs font-semibold text-muted">Who had it, and how many</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {units.map((u) => (
+                                  <span
+                                    key={u.name}
+                                    className={`flex items-center gap-1 rounded-full py-0.5 pl-2.5 pr-1 text-xs font-semibold ${u.units ? "" : "opacity-50"}`}
+                                    style={{ background: tone(u.name)[0], color: tone(u.name)[1] }}
+                                  >
+                                    {u.name}
+                                    <button
+                                      className="grid size-6 place-items-center rounded-full hover:bg-black/10 disabled:opacity-30"
+                                      aria-label={`${u.name} had one less`}
+                                      disabled={!u.units}
+                                      onClick={() => setUnits(i, u.name, u.units - 1)}
+                                    >
+                                      −
+                                    </button>
+                                    <span className="w-4 text-center tabular-nums">{+u.units.toFixed(2)}</span>
+                                    <button className="grid size-6 place-items-center rounded-full hover:bg-black/10" aria-label={`${u.name} had one more`} onClick={() => setUnits(i, u.name, u.units + 1)}>
+                                      +
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                              {units.every((u) => !u.units) && <p className="text-xs text-muted">Nobody picked, so everyone shares it equally.</p>}
+                              <div className="flex items-center justify-between">
+                                <button
+                                  className="text-xs font-semibold text-[#b91c1c] hover:underline"
+                                  onClick={() => {
+                                    applyReview(removeItem(receipt, i), assignments.filter((_, j) => j !== i));
+                                    setEditingItem(null);
+                                  }}
+                                >
+                                  Remove line
+                                </button>
+                                <button className="rounded-full bg-blue px-4 py-1.5 text-xs font-semibold text-white" onClick={() => setEditingItem(null)}>
+                                  Done
+                                </button>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      }
                       return (
                         <li key={i} className="py-2.5">
                           <div className="flex justify-between gap-4">
                             <span>{it.name}</span>
                             <span className="font-medium tabular-nums">{fmt(Math.round(it.price * 100))}</span>
                           </div>
-                          {who.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
+                          {(who.length > 0 || reviewing) && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
                               {who.map(({ name: n, units }) => (
                                 <span key={n} className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: tone(n)[0], color: tone(n)[1] }}>
                                   {n}
                                   {units !== 1 && ` ×${+units.toFixed(2)}`}
                                 </span>
                               ))}
+                              {reviewing && (
+                                <button className="ml-auto text-xs font-semibold text-blue hover:underline" onClick={() => setEditingItem(i)} aria-label={`Edit ${it.name}`}>
+                                  Edit
+                                </button>
+                              )}
                             </div>
                           )}
                         </li>
                       );
                     })}
                   </ul>
+                  {reviewing && (
+                    <button
+                      className="mt-1 text-xs font-semibold text-blue hover:underline"
+                      onClick={() => {
+                        applyReview(addItem(receipt, { name: "New item", price: 0 }), [...assignments, []]);
+                        setEditingItem(receipt.items.length);
+                      }}
+                    >
+                      + Add item
+                    </button>
+                  )}
                   <div className="mt-2 space-y-1 rounded-xl bg-canvas p-3.5">
-                    <p className="flex justify-between text-muted"><span>Tax</span><span className="tabular-nums">{fmt(Math.round(receipt.tax * 100))}</span></p>
-                    <p className="flex justify-between text-muted"><span>Tip on receipt</span><span className="tabular-nums">{fmt(Math.round(receipt.tip * 100))}</span></p>
-                    <p className="flex justify-between pt-1 text-base font-bold"><span>Total</span><span className="tabular-nums">{fmt(Math.round(receipt.total * 100))}</span></p>
+                    {(["tax", "tip"] as const).map((field) => (
+                      <p key={field} className="flex items-center justify-between text-muted">
+                        <span>{field === "tax" ? "Tax" : "Tip on receipt"}</span>
+                        {reviewing ? (
+                          <input
+                            className="w-24 rounded-lg bg-surface px-2 py-1 text-right text-sm tabular-nums text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-blue"
+                            aria-label={field === "tax" ? "Tax" : "Tip on receipt"}
+                            inputMode="decimal"
+                            defaultValue={receipt[field].toFixed(2)}
+                            onChange={(e) => {
+                              const v = money(e.target.value);
+                              if (v !== null) applyReview(setExtra(receipt, field, v), assignments);
+                            }}
+                          />
+                        ) : (
+                          <span className="tabular-nums">{fmt(Math.round(receipt[field] * 100))}</span>
+                        )}
+                      </p>
+                    ))}
+                    {extraTip > 0 && (
+                      <p className="flex justify-between text-muted">
+                        <span>Extra tip you asked for</span>
+                        <span className="tabular-nums">{+extraTip.toFixed(2)}%</span>
+                      </p>
+                    )}
+                    <p className="flex justify-between pt-1 text-base font-bold">
+                      <span>Total</span>
+                      <span className="tabular-nums">{fmt(Math.round(receipt.total * 100) || Math.round((receipt.items.reduce((t, x) => t + x.price, 0) + receipt.tax + receipt.tip) * 100))}</span>
+                    </p>
                   </div>
                   <label className="mt-4 inline-block cursor-pointer font-semibold text-blue hover:underline">
                     {fileInput}

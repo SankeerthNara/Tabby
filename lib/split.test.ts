@@ -43,3 +43,19 @@ test("extra tip percent and unknown names", () => {
   const shares = splitBill(receipt, [each("Ghost")], [{ name: "A", email: "" }, { name: "B", email: "" }], 20);
   assert.deepEqual(shares.map((s) => s.totalCents), [1200, 1200]);
 });
+
+test("review edits keep the total consistent", async () => {
+  const { setItem, removeItem, addItem, setExtra } = await import("./split.ts");
+  const r: Receipt = { merchant: "", currency: "USD", tax: 2, tip: 0, total: 25.5, items: [{ name: "A", price: 10 }, { name: "B", price: 13.5 }] }; // 0.00 unitemized
+  const fixed = setItem(r, 1, { name: "B", price: 3.5 }); // AI misread 3.50 as 13.50
+  assert.equal(fixed.total, 15.5);
+  assert.equal(removeItem(fixed, 0).total, 5.5);
+  assert.equal(addItem(fixed, { name: "C", price: 0.1 }).total, 15.6);
+  assert.equal(setExtra(fixed, "tip", 3).total, 18.5);
+  // a receipt with no printed total stays 0, so splitBill keeps summing the parts
+  assert.equal(setItem({ ...r, total: 0 }, 0, { name: "A", price: 1 }).total, 0);
+  // the split after a fix still adds up exactly
+  const people = [{ name: "Me", email: "" }, { name: "Sam", email: "s@x.com" }];
+  const shares = splitBill(fixed, [[{ name: "Me", units: 1 }], [{ name: "Sam", units: 1 }]], people);
+  assert.equal(shares.reduce((a, s) => a + s.totalCents, 0), 1550);
+});

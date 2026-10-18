@@ -58,3 +58,25 @@ export function splitBill(receipt: Receipt, assignments: Portion[][], people: Pe
   shares.forEach((s) => (s.totalCents = s.lines.reduce((a, l) => a + l.cents, 0)));
   return shares;
 }
+
+// ---- Review edits ----
+// Fixing a price, tax or tip moves the receipt total by the same amount, so fees the AI couldn't itemize stay put
+// instead of absorbing the correction. A receipt with no printed total (0) keeps 0: splitBill then sums the parts.
+const moveTotal = (r: Receipt, deltaCents: number) => (r.total > 0 ? (toCents(r.total) + deltaCents) / 100 : 0);
+
+export function setItem(r: Receipt, i: number, item: Item): Receipt {
+  const delta = toCents(item.price) - toCents(r.items[i].price);
+  return { ...r, items: r.items.map((it, j) => (j === i ? item : it)), total: moveTotal(r, delta) };
+}
+
+export function removeItem(r: Receipt, i: number): Receipt {
+  return { ...r, items: r.items.filter((_, j) => j !== i), total: moveTotal(r, -toCents(r.items[i].price)) };
+}
+
+export function addItem(r: Receipt, item: Item): Receipt {
+  return { ...r, items: [...r.items, item], total: moveTotal(r, toCents(item.price)) };
+}
+
+export function setExtra(r: Receipt, field: "tax" | "tip", value: number): Receipt {
+  return { ...r, [field]: value, total: moveTotal(r, toCents(value) - toCents(r[field])) };
+}
