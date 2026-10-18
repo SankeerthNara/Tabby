@@ -1,6 +1,7 @@
 import { currentUser } from "@/lib/auth";
 import { invoiceStatus, remind } from "@/lib/paypal";
-import { canNudge } from "@/lib/store";
+import { settle } from "@/lib/settle";
+import { canNudge, type Payout } from "@/lib/store";
 
 const ID = /^[A-Z0-9-]{1,64}$/;
 
@@ -8,7 +9,10 @@ export async function GET(req: Request) {
   if (!(await currentUser())) return Response.json({ error: "Log in with PayPal first." }, { status: 401 });
   const ids = (new URL(req.url).searchParams.get("ids") ?? "").split(",").filter((id) => ID.test(id)).slice(0, 20);
   const results = await Promise.allSettled(ids.map(invoiceStatus));
-  return Response.json(results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : [])));
+  const found = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  // The live board polls this, so a payment gets forwarded to whoever paid within seconds.
+  const payouts = await settle(found).catch(() => new Map<string, Payout>());
+  return Response.json(found.map((s) => ({ ...s, payout: payouts.get(s.id) })));
 }
 
 export async function POST(req: Request) {

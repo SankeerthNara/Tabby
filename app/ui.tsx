@@ -171,3 +171,12 @@ export function CountUp({ value, format, delay = 0 }: { value: number; format: (
   return <>{format(v)}</>;
 }
 
+
+// One wording for payout states, shared by the live board and My tabs.
+export function payoutText(p: { status: string; to: string }, viewerEmail?: string) {
+  const who = viewerEmail && p.to.toLowerCase() === viewerEmail.toLowerCase() ? "your PayPal" : p.to;
+  if (p.status === "SUCCESS") return { text: `Forwarded to ${who} ✓`, ok: true };
+  if (p.status === "UNCLAIMED") return { text: `Sent to ${who}, waiting to be claimed`, ok: true };
+  if (["FAILED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED", "DENIED"].includes(p.status)) return { text: "Couldn't forward this payment", ok: false };
+  return { text: `Forwarding to ${who}…`, ok: true };
+}

@@ -110,3 +110,34 @@ export async function overLimit(key: string, limit: number, windowSec: number): 
   ])) as number[];
   return count > limit;
 }
+
+// ---- Payout records: payout:<invoiceId> = what happened when we forwarded that invoice's money ----
+export type Payout = { status: string; to: string; at: number; batchId?: string; error?: string };
+const FINAL_PAYOUT = ["SUCCESS", "UNCLAIMED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED", "DENIED"];
+export const payoutIsFinal = (p: Payout) => FINAL_PAYOUT.includes(p.status) || p.status === "FAILED";
+
+// Claims an invoice for payout and returns who to pay, or null if it's already handled (or not ours to pay).
+// SET NX makes the claim atomic; a FAILED attempt may be retried after a pause (PayPal's batch id still blocks doubles).
+export async function claimPayout(invoiceId: string): Promise<string | null> {
+  const [owner, existing] = (await pipeline([["GET", `invoice:${invoiceId}`], ["GET", `payout:${invoiceId}`]])) as (string | null)[];
+  if (!owner?.startsWith("{")) return null; // older splits didn't record who paid
+  const { payer } = JSON.parse(owner);
+  if (existing) {
+    const prev = JSON.parse(existing) as Payout;
+    // only FAILED attempts are retried, and at most every 10 minutes so a persistent error doesn't hammer PayPal
+    if (prev.status !== "FAILED" || Date.now() - prev.at < 10 * 60_000) return null;
+  }
+  const claim = JSON.stringify({ status: "STARTING", to: payer, at: Date.now() });
+  const [ok] = existing
+    ? await pipeline([["SET", `payout:${invoiceId}`, claim]])
+    : await pipeline([["SET", `payout:${invoiceId}`, claim, "NX"]]);
+  return ok === "OK" ? payer : null;
+}
+
+export const savePayout = (invoiceId: string, p: Payout) => pipeline([["SET", `payout:${invoiceId}`, JSON.stringify(p)]]);
+
+export async function payoutsFor(invoiceIds: string[]): Promise<Map<string, Payout>> {
+  if (!invoiceIds.length) return new Map();
+  const [raw] = (await pipeline([["MGET", ...invoiceIds.map((id) => `payout:${id}`)]])) as (string | null)[][];
+  return new Map(invoiceIds.flatMap((id, i) => (raw[i] ? [[id, JSON.parse(raw[i]!) as Payout] as const] : [])));
+}

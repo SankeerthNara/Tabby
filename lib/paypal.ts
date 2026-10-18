@@ -109,7 +109,32 @@ export async function loginUser(code: string): Promise<{ id: string; name: strin
 
 export async function invoiceStatus(id: string) {
   const inv = await call(`/v2/invoicing/invoices/${encodeURIComponent(id)}`);
-  return { id, status: inv.status as string, payUrl: inv.detail?.metadata?.recipient_view_url as string | undefined };
+  return {
+    id,
+    status: inv.status as string,
+    payUrl: inv.detail?.metadata?.recipient_view_url as string | undefined,
+    amountCents: Math.round(Number(inv.amount?.value ?? 0) * 100),
+    currency: (inv.amount?.currency_code ?? inv.detail?.currency_code) as string,
+  };
+}
+
+// ---- Payouts: forward a friend's payment to whoever paid the restaurant ----
+// sender_batch_id is tied to the invoice, so PayPal itself refuses to pay the same invoice out twice.
+export async function sendPayout(invoiceId: string, to: string, cents: number, currency: string, note: string) {
+  const r = await call("/v1/payments/payouts", "POST", {
+    sender_batch_header: {
+      sender_batch_id: `tabby-${invoiceId}`,
+      email_subject: "You've been paid back on Tabby",
+      email_message: note,
+    },
+    items: [{ recipient_type: "EMAIL", amount: { value: (cents / 100).toFixed(2), currency }, receiver: to, note, sender_item_id: invoiceId }],
+  });
+  return { batchId: r.batch_header.payout_batch_id as string, status: r.batch_header.batch_status as string };
+}
+
+export async function payoutStatus(batchId: string): Promise<string> {
+  const r = await call(`/v1/payments/payouts/${encodeURIComponent(batchId)}`);
+  return (r.items?.[0]?.transaction_status ?? r.batch_header?.batch_status) as string;
 }
 
 export function remind(id: string) {

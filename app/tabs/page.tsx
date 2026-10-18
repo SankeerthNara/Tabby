@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { addTransitionType, startTransition, useCallback, useEffect, useState, ViewTransition } from "react";
-import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d } from "../ui";
+import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d, payoutText } from "../ui";
 import Friends from "./Friends";
 
 type Share = {
@@ -14,6 +14,7 @@ type Share = {
   chargedCents: number;
   chargedCurrency: string;
   status: string;
+  payout?: { status: string; to: string; error?: string }; // money forwarded to whoever paid the bill
 };
 type Split = { id: string; owner: { name: string; email: string }; payer?: { name: string; email: string }; merchant: string; currency: string; createdAt: number; shares: Share[] };
 type Data = { user: { name: string; email: string }; paid: Split[]; owe: Split[] };
@@ -377,6 +378,14 @@ export default function Tabs() {
                               {tab === "owe" ? (split.payer ?? split.owner).email : s.email}
                               {isOpen(s) && now > 0 && <span className="text-[#946200] dark:text-[#e2b84a]"> · {waited(split.createdAt, now)}</span>}
                             </p>
+                            {tab !== "owe" && s.payout && (() => {
+                              const t = payoutText(s.payout, data?.user.email);
+                              return (
+                                <p className={`mt-0.5 text-xs font-semibold ${t.ok ? "text-[#0f7a55] dark:text-mint" : "text-[#b91c1c]"}`} title={s.payout.error}>
+                                  {t.text}
+                                </p>
+                              );
+                            })()}
                           </div>
                           <Amount s={s} currency={split.currency} />
                           <div className="flex w-full items-center justify-end gap-2 sm:w-auto">

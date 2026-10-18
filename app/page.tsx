@@ -7,7 +7,7 @@ import type { Person, Portion, Receipt, Share } from "@/lib/split";
 import type { Friend, Group } from "@/lib/store";
 import { joinTranscripts } from "@/lib/transcript";
 import HowItWorks from "./HowItWorks";
-import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d } from "./ui";
+import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d, payoutText } from "./ui";
 
 type Sent = {
   name: string;
@@ -19,9 +19,11 @@ type Sent = {
   error?: string;
   chargedCents?: number;
   chargedCurrency?: string;
+  payout?: { status: string; to: string };
 };
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
+const PAYOUT_DONE = ["SUCCESS", "UNCLAIMED", "FAILED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED", "DENIED"];
 const DRAFT = "tabby-draft";
 // Home <-> My tabs slide; links pick the direction with transitionTypes, other navigations don't animate.
 const SLIDE = { "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" };
@@ -413,12 +415,19 @@ function Home() {
   const onNudge = (id: string) => run(`nudge-${id}`, async () => void (await post("/api/invoices", { id })));
 
   // Poll PayPal until everyone has paid.
-  const openIds = sent?.filter((s) => s.id && !PAID.includes(s.status ?? "")).map((s) => s.id).join(",");
+  // Keep polling until everyone has paid and each payment has been forwarded to whoever paid the bill.
+  const settled = (s: Sent) => PAID.includes(s.status ?? "") && (s.status === "MARKED_AS_PAID" || PAYOUT_DONE.includes(s.payout?.status ?? ""));
+  const openIds = sent?.filter((s) => s.id && !settled(s)).map((s) => s.id).join(",");
   useEffect(() => {
     if (!openIds) return;
     const t = setInterval(async () => {
-      const statuses: { id: string; status: string }[] = await (await fetch(`/api/invoices?ids=${openIds}`)).json();
-      setSent((prev) => prev!.map((s) => ({ ...s, status: statuses.find((x) => x.id === s.id)?.status ?? s.status })));
+      const statuses: { id: string; status: string; payout?: Sent["payout"] }[] = await (await fetch(`/api/invoices?ids=${openIds}`)).json();
+      setSent((prev) =>
+        prev!.map((s) => {
+          const x = statuses.find((y) => y.id === s.id);
+          return x ? { ...s, status: x.status, payout: x.payout ?? s.payout } : s;
+        }),
+      );
     }, 5000);
     return () => clearInterval(t);
   }, [openIds]);
@@ -959,6 +968,10 @@ function Home() {
                             ) : null}
                           </div>
                           {st?.error && <p className="mt-1 pl-12 text-xs text-[#b91c1c]">{st.error}</p>}
+                          {st?.payout && (() => {
+                            const t = payoutText(st.payout, user?.email);
+                            return <p className={`mt-1 pl-12 text-xs font-semibold ${t.ok ? "text-[#0f7a55] dark:text-mint" : "text-[#b91c1c]"}`}>{t.text}</p>;
+                          })()}
                         </li>
                       );
                     })}
