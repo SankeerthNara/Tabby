@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import type { Person, Portion, Receipt, Share } from "@/lib/split";
+import { joinTranscripts } from "@/lib/transcript";
 import HowItWorks from "./HowItWorks";
 import { Asterisk, Avatar, Scribble, TONES, d } from "./ui";
 
@@ -249,7 +250,7 @@ function VoiceButton({ value, onChange, onError, disabled }: { value: string; on
     r.interimResults = true;
     r.lang = navigator.language || "en-IN";
     r.onresult = (e) => {
-      const said = Array.from(e.results, (res) => res[0].transcript).join("").trim();
+      const said = joinTranscripts(Array.from(e.results, (res) => res[0].transcript));
       onChange(before ? `${before} ${said}` : said);
     };
     r.onerror = (e) => {
