@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { assignItems } from "@/lib/ai";
+import { guardAi } from "@/lib/auth";
 import { splitBill, type Portion } from "@/lib/split";
 
 const Body = z.object({
@@ -17,6 +18,8 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const blocked = await guardAi(req);
+  if (blocked) return blocked;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Add a receipt, at least one friend, and who had what." }, { status: 400 });
   const { receipt, people, sentence } = parsed.data;

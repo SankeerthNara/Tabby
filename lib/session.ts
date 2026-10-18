@@ -32,3 +32,6 @@ export function sessionSecret(): string {
   if (!s || s.length < 32) throw new Error("SESSION_SECRET is missing or shorter than 32 characters.");
   return s;
 }
+
+// Shared demo account for hackathon judges (enabled with NEXT_PUBLIC_DEMO_LOGIN=1); everyone in it sees the same tabs.
+export const DEMO_ID = "demo";

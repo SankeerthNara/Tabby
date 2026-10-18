@@ -1,8 +1,11 @@
 import { readReceipt } from "@/lib/ai";
+import { guardAi } from "@/lib/auth";
 
 const TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
 export async function POST(req: Request) {
+  const blocked = await guardAi(req);
+  if (blocked) return blocked;
   const file = (await req.formData()).get("receipt");
   if (!(file instanceof File)) return Response.json({ error: "No receipt image uploaded." }, { status: 400 });
   const type = TYPES.find((t) => t === file.type);

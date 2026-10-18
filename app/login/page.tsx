@@ -5,6 +5,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Asterisk, Avatar, Scribble, ThemeToggle, TONES, d } from "../ui";
 
 const noSubscribe = () => () => {};
+// Shared demo login for hackathon judges; inlined at build time.
+const DEMO = process.env.NEXT_PUBLIC_DEMO_LOGIN === "1";
 const query = (key: string) => () => new URLSearchParams(location.search).get(key) ?? "";
 
 export default function Login() {
@@ -51,6 +53,13 @@ export default function Login() {
               </svg>
             </span>
           </a>
+
+          {DEMO && (
+            <form action="/api/auth/demo" method="post" className="a a-up mt-4" style={d(500)}>
+              <button className="rounded-full border border-line px-5 py-2.5 text-sm font-semibold hover:border-fg">Try the demo</button>
+              <span className="ml-3 text-sm text-muted">No PayPal login needed. Uses a shared demo account.</span>
+            </form>
+          )}
 
           {error && (
             <p role="alert" className="mt-5 max-w-md rounded-xl bg-[#fde8e8] p-3.5 text-sm font-medium text-[#b91c1c]">

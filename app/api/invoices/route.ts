@@ -5,6 +5,7 @@ import { canNudge } from "@/lib/store";
 const ID = /^[A-Z0-9-]{1,64}$/;
 
 export async function GET(req: Request) {
+  if (!(await currentUser())) return Response.json({ error: "Log in with PayPal first." }, { status: 401 });
   const ids = (new URL(req.url).searchParams.get("ids") ?? "").split(",").filter((id) => ID.test(id)).slice(0, 20);
   const results = await Promise.allSettled(ids.map(invoiceStatus));
   return Response.json(results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : [])));

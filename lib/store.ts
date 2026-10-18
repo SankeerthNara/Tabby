@@ -101,3 +101,12 @@ export async function saveFriends(user: User, people: Person[]) {
 export const deleteFriend = (user: User, email: string) => pipeline([["HDEL", `friends:${user.id}`, lc(email)]]);
 export const saveGroup = (user: User, group: Group) => pipeline([["HSET", `groups:${user.id}`, group.id, JSON.stringify(group)]]);
 export const deleteGroup = (user: User, id: string) => pipeline([["HDEL", `groups:${user.id}`, id]]);
+
+// Fixed-window rate limit: true once `key` has been used more than `limit` times in `windowSec`.
+export async function overLimit(key: string, limit: number, windowSec: number): Promise<boolean> {
+  const [count] = (await pipeline([
+    ["INCR", `rl:${key}`],
+    ["EXPIRE", `rl:${key}`, windowSec, "NX"],
+  ])) as number[];
+  return count > limit;
+}
