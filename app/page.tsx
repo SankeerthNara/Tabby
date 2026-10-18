@@ -5,7 +5,17 @@ import type { Person, Receipt, Share } from "@/lib/split";
 import HowItWorks from "./HowItWorks";
 import { Asterisk, Avatar, Scribble, TONES, d } from "./ui";
 
-type Sent = { name: string; email: string; totalCents: number; id?: string; payUrl?: string; status?: string; error?: string };
+type Sent = {
+  name: string;
+  email: string;
+  totalCents: number;
+  id?: string;
+  payUrl?: string;
+  status?: string;
+  error?: string;
+  chargedCents?: number;
+  chargedCurrency?: string;
+};
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
 // Phone photos are huge; shrink to 1600px JPEG first.
@@ -527,6 +537,12 @@ export default function Home() {
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold">{s.name}{i === 0 && " (you)"}</p>
                               <p className="truncate text-xs text-muted">{i === 0 ? "Paid the bill" : s.email || "Add their PayPal email"}</p>
+                              {st?.chargedCurrency && st.chargedCurrency !== receipt?.currency && st.chargedCents !== undefined && (
+                                <p className="text-xs font-semibold text-blue">
+                                  Requested as{" "}
+                                  {new Intl.NumberFormat(undefined, { style: "currency", currency: st.chargedCurrency }).format(st.chargedCents / 100)} on PayPal
+                                </p>
+                              )}
                             </div>
                             <span className="text-lg font-bold tabular-nums">
                               <CountUp value={s.totalCents} format={fmt} delay={i * 110} />

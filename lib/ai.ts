@@ -4,23 +4,30 @@ import type { Receipt } from "./split";
 
 // 60s cap so a slow free-tier response fails visibly instead of hanging the UI.
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { timeout: 60_000 } });
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+// Free-tier models get overloaded (503) or rate-limited (429); fall through to the next one.
+const MODELS = [process.env.GEMINI_MODEL || "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
 
 // One JSON-mode call; zod re-validates because the model output is untrusted.
 async function ask<T extends z.ZodType>(schema: T, parts: Part[]): Promise<z.infer<T>> {
   const { $schema, ...jsonSchema } = z.toJSONSchema(schema); // eslint-disable-line @typescript-eslint/no-unused-vars
-  try {
-    const res = await ai.models.generateContent({
-      model: MODEL,
-      contents: [{ role: "user", parts }],
-      config: { responseMimeType: "application/json", responseJsonSchema: jsonSchema },
-    });
-    return schema.parse(JSON.parse(res.text ?? ""));
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 429) throw new Error("Gemini free-tier rate limit hit. Wait a minute and try again.");
-    if (e instanceof ApiError) throw new Error(`Gemini error ${e.status}: ${e.message}`);
-    throw new Error("The AI was too slow or gave an unreadable answer. Try again.");
+  let last: unknown;
+  for (const model of MODELS) {
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: [{ role: "user", parts }],
+        config: { responseMimeType: "application/json", responseJsonSchema: jsonSchema },
+      });
+      return schema.parse(JSON.parse(res.text ?? ""));
+    } catch (e) {
+      last = e;
+      // Bad request or bad key won't get better on another model.
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw new Error(`Gemini error ${e.status}: ${e.message}`);
+    }
   }
+  if (last instanceof ApiError && last.status === 429) throw new Error("Gemini free-tier rate limit hit. Wait a minute and try again.");
+  if (last instanceof ApiError) throw new Error("Gemini is busy right now. Try again in a minute.");
+  throw new Error("The AI was too slow or gave an unreadable answer. Try again.");
 }
 
 const ReceiptSchema = z.object({

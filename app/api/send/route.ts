@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { sendInvoice } from "@/lib/paypal";
+import { invoiceFx, sendInvoice } from "@/lib/paypal";
 
 const Body = z.object({
   currency: z.string().length(3),
@@ -22,7 +22,13 @@ export async function POST(req: Request) {
   if (!parsed.success) return Response.json({ error: "Every friend needs a valid email and something to pay." }, { status: 400 });
   const { shares, currency, merchant } = parsed.data;
 
-  const results = await Promise.allSettled(shares.map((s) => sendInvoice(s, currency, merchant)));
+  let fx;
+  try {
+    fx = await invoiceFx(currency);
+  } catch (e) {
+    return Response.json({ error: (e as Error).message }, { status: 502 });
+  }
+  const results = await Promise.allSettled(shares.map((s) => sendInvoice(s, currency, merchant, fx)));
   return Response.json(
     results.map((r, i) => ({
       name: shares[i].name,
