@@ -4,6 +4,7 @@ import Link from "next/link";
 import { addTransitionType, startTransition, useCallback, useEffect, useState, ViewTransition } from "react";
 import { Asterisk, Avatar, CountUp, Scribble, ThemeToggle, TONES, Words, d, payoutText } from "../ui";
 import Friends from "./Friends";
+import Ledger, { type LedgerRow } from "./Ledger";
 
 type Share = {
   name: string;
@@ -21,8 +22,8 @@ type Data = { user: { name: string; email: string }; paid: Split[]; owe: Split[]
 
 const PAID = ["PAID", "MARKED_AS_PAID"];
 // Same slide as the home page: forward into My tabs, back out to Split a bill.
-type Tab = "pending" | "settled" | "owe" | "friends";
-const TAB_ORDER: Tab[] = ["pending", "settled", "owe", "friends"];
+type Tab = "pending" | "settled" | "owe" | "ledger" | "friends";
+const TAB_ORDER: Tab[] = ["pending", "settled", "owe", "ledger", "friends"];
 const TAB_SLIDE = { "tab-forward": "tab-forward", "tab-back": "tab-back", default: "none" };
 const SLIDE = { "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" };
 const isPaid = (s: Share) => PAID.includes(s.status);
@@ -228,10 +229,21 @@ export default function Tabs() {
   const pending = data?.paid.filter((s) => s.shares.some(isOpen)) ?? [];
   const settled = data?.paid.filter((s) => !s.shares.some(isOpen)) ?? [];
   const owe = data?.owe ?? [];
+  // Every share as one ledger row: what friends owe you on bills you paid, and what you owe on theirs.
+  const status = (s: Share): LedgerRow["status"] => (isPaid(s) ? "Paid" : s.status === "CANCELLED" ? "Cancelled" : "Waiting");
+  const ledger: LedgerRow[] = [
+    ...(data?.paid ?? []).flatMap((sp) =>
+      sp.shares.map((s) => ({ date: sp.createdAt, bill: sp.merchant || "A bill", person: s.name, email: s.email, direction: "Owes you" as const, cents: s.chargedCents, currency: s.chargedCurrency, status: status(s), payout: s.payout ? payoutText(s.payout, data?.user.email).text.replace(" to your PayPal", "") : "" })),
+    ),
+    ...owe.flatMap((sp) =>
+      sp.shares.map((s) => ({ date: sp.createdAt, bill: sp.merchant || "A bill", person: (sp.payer ?? sp.owner).name, email: (sp.payer ?? sp.owner).email, direction: "You owe" as const, cents: s.chargedCents, currency: s.chargedCurrency, status: status(s), payout: "" })),
+    ),
+  ];
   const tabs = [
     ["pending", "Pending", pending.length],
     ["settled", "Settled", settled.length],
     ["owe", "You owe", owe.filter((s) => s.shares.some(isOpen)).length],
+    ["ledger", "Ledger", ledger.length],
     ["friends", "Friends", friendCount],
   ] as const;
   const list = tab === "pending" ? pending : tab === "settled" ? settled : tab === "owe" ? owe : [];
@@ -325,7 +337,8 @@ export default function Tabs() {
             <ViewTransition key={tab} enter={TAB_SLIDE} exit={TAB_SLIDE} default="none">
             <div role="tabpanel" className="mt-6 space-y-4">
               {tab === "friends" && <Friends onCount={setFriendCount} />}
-              {tab !== "friends" && list.length === 0 && (
+              {tab === "ledger" && <Ledger rows={ledger} />}
+              {tab !== "friends" && tab !== "ledger" && list.length === 0 && (
                 <div className="rounded-[1.75rem] bg-surface px-8 py-12 text-center">
                   <Asterisk className="mx-auto size-12 text-blue" delay={switched ? 150 : 500} />
                   <p className="mt-5 text-lg font-semibold">
@@ -414,6 +427,7 @@ export default function Tabs() {
             </div>
             </ViewTransition>
             <p className="mt-8 text-xs text-muted">
+              Friends who haven&apos;t paid get an automatic PayPal reminder after 3 days, then every 3 days (up to 3 times).
               Sandbox demo: requests are sent from Tabby&apos;s PayPal account. Routing money to each person&apos;s own PayPal needs PayPal&apos;s partner program.
             </p>
           </>

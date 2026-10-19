@@ -1,0 +1,16 @@
+# Once a day, ask the Tabby worker on Render to nudge friends who haven't paid
+# (after 3 days, every 3 days, at most 3 times). Free alternative to a Render cron job.
+name: Daily reminders
+on:
+  schedule:
+    - cron: "0 16 * * *" # 16:00 UTC
+  workflow_dispatch:
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run the reminder job
+        # The free Render instance sleeps when idle, so allow time for it to wake up and retry once.
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 180 --retry 2 --retry-delay 30 --retry-all-errors \
+            -X POST -H "Authorization: Bearer ${{ secrets.REMINDER_SECRET }}" "${{ vars.WORKER_URL }}/tasks/remind"

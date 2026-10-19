@@ -1,4 +1,4 @@
-import { allocate, type Share } from "./split";
+import { allocate, type Share } from "./split.ts";
 
 const BASE = process.env.PAYPAL_API_BASE ?? "https://api-m.sandbox.paypal.com";
 
@@ -115,7 +115,25 @@ export async function invoiceStatus(id: string) {
     payUrl: inv.detail?.metadata?.recipient_view_url as string | undefined,
     amountCents: Math.round(Number(inv.amount?.value ?? 0) * 100),
     currency: (inv.amount?.currency_code ?? inv.detail?.currency_code) as string,
+    createdAt: Date.parse(inv.detail?.metadata?.create_time ?? "") || 0,
   };
+}
+
+// PayPal webhooks: ask PayPal whether this delivery really came from it, for our registered webhook.
+export async function verifyWebhook(headers: Record<string, string | string[] | undefined>, event: unknown, webhookId: string) {
+  const h = (k: string) => String(headers[k] ?? "");
+  const names = ["paypal-auth-algo", "paypal-cert-url", "paypal-transmission-id", "paypal-transmission-sig", "paypal-transmission-time"];
+  if (names.some((k) => !h(k))) return false; // not a PayPal delivery at all
+  const r = await call("/v1/notifications/verify-webhook-signature", "POST", {
+    auth_algo: h("paypal-auth-algo"),
+    cert_url: h("paypal-cert-url"),
+    transmission_id: h("paypal-transmission-id"),
+    transmission_sig: h("paypal-transmission-sig"),
+    transmission_time: h("paypal-transmission-time"),
+    webhook_id: webhookId,
+    webhook_event: event,
+  });
+  return r.verification_status === "SUCCESS";
 }
 
 // ---- Payouts: forward a friend's payment to whoever paid the restaurant ----

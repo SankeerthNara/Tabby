@@ -1,0 +1,29 @@
+# Render Blueprint: Tabby's background worker. The web app itself stays on Vercel.
+# Runs lib/*.ts directly on Node 24 (type stripping), so there's no build step and no dependencies.
+services:
+  - type: web
+    name: tabby-worker
+    runtime: node
+    plan: free
+    buildCommand: echo "no build step"
+    startCommand: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON worker/server.ts
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: PAYPAL_API_BASE
+        value: https://api-m.sandbox.paypal.com
+      - key: PAYPAL_PAYOUTS
+        value: "1"
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID # from PayPal after registering https://<this service>/paypal/webhook
+        sync: false
+      - key: REMINDER_SECRET # shared with the GitHub Action that calls /tasks/remind daily
+        sync: false

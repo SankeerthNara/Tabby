@@ -1,5 +1,5 @@
-import { payoutStatus, sendPayout } from "./paypal";
-import { claimPayout, payoutIsFinal, payoutsFor, savePayout, type Payout } from "./store";
+import { payoutStatus, sendPayout } from "./paypal.ts";
+import { claimPayout, payoutIsFinal, payoutsFor, savePayout, type Payout } from "./store.ts";
 
 type Status = { id: string; status: string; amountCents: number; currency: string };
 

@@ -141,3 +141,26 @@ export async function payoutsFor(invoiceIds: string[]): Promise<Map<string, Payo
   const [raw] = (await pipeline([["MGET", ...invoiceIds.map((id) => `payout:${id}`)]])) as (string | null)[][];
   return new Map(invoiceIds.flatMap((id, i) => (raw[i] ? [[id, JSON.parse(raw[i]!) as Payout] as const] : [])));
 }
+
+// ---- Automatic reminders (the Render cron job, worker/remind.ts) ----
+export type Reminder = { count: number; at: number };
+
+// Every invoice Tabby has sent (invoice:<id> is written when a split is saved).
+export async function trackedInvoices(): Promise<string[]> {
+  const ids: string[] = [];
+  let cursor = "0";
+  do {
+    const [[next, keys]] = (await pipeline([["SCAN", cursor, "MATCH", "invoice:*", "COUNT", 500]])) as [string, string[]][];
+    ids.push(...keys.map((k) => k.slice("invoice:".length)));
+    cursor = next;
+  } while (cursor !== "0");
+  return ids;
+}
+
+export async function remindersFor(ids: string[]): Promise<Map<string, Reminder>> {
+  if (!ids.length) return new Map();
+  const raw = (await pipeline([["MGET", ...ids.map((id) => `reminded:${id}`)]]))[0] as (string | null)[];
+  return new Map(ids.flatMap((id, i) => (raw[i] ? [[id, JSON.parse(raw[i]!) as Reminder]] : [])));
+}
+
+export const saveReminder = (id: string, r: Reminder) => pipeline([["SET", `reminded:${id}`, JSON.stringify(r)]]);
