@@ -97,7 +97,8 @@ export default function Ledger({ rows }: { rows: LedgerRow[] }) {
           </button>
         </div>
       </div>
-      <div className="mt-4">
+      {/* Keep the full height while searching, so filtering rows doesn't shrink the page and jump the scroll. */}
+      <div className="mt-4" style={{ minHeight: 44 + (rows.length + pinned.length) * 56 }}>
         <AgGridReact<LedgerRow>
           ref={grid}
           theme={gridTheme}
