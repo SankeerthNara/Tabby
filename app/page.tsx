@@ -382,6 +382,7 @@ function Home() {
 
   const onSplit = () =>
     run("split", async () => {
+      setShares(null); // a failed re-split must not leave the old split sendable
       const data = await post("/api/split", { receipt, people, sentence });
       setShares(data.shares);
       setAssignments(data.assignments);

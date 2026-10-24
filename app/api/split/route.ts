@@ -28,6 +28,8 @@ export async function POST(req: Request) {
 
   try {
     const ai = await assignItems(receipt, names, names[0], sentence);
+    if (ai.not_on_receipt.length)
+      return Response.json({ error: `These aren't on this receipt: ${ai.not_on_receipt.join(", ")}. Check what you said matches the items, then split again.` }, { status: 422 });
     // Smaller fallback models sometimes list people with 0 units; drop them so they get no chip and no line.
     const assignments: Portion[][] = receipt.items.map((_, i) => (ai.assignments.find((a) => a.item === i)?.people ?? []).filter((p) => p.units > 0));
     return Response.json({ shares: splitBill(receipt, assignments, people, ai.extra_tip_percent), assignments, tip: ai.extra_tip_percent, question: ai.question });

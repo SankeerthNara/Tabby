@@ -120,11 +120,12 @@ export function assignItems(receipt: Receipt, names: string[], payer: string, se
     ),
     extra_tip_percent: z.number().describe("tip percent the user asked to add on top, else 0"),
     question: z.string().describe("one short clarifying question if something is genuinely ambiguous, else empty"),
+    not_on_receipt: z.array(z.string()).describe("foods or drinks they say someone had that match no receipt item, in their words; else empty"),
   });
   const items = receipt.items.map((it, i) => `${i}. ${it.name} - ${it.price}`).join("\n");
   return ask(schema, [
     {
-      text: `Receipt items:\n${items}\n\nPeople: ${names.join(", ")}. "I", "me" or "my" means ${payer}.\n\nWho had what, in their words:\n"""${sentence}"""\n\nFor every item index, list who had it and how many units each. Example: on "3 x Veg Biryani", "I had 1 biryani, Sam the rest" gives Me 1 and Sam 2. An item shared evenly gives each sharer 1. Items nobody mentioned, or said to be shared by everyone, get all people with 1 each. Set "question" to an empty string unless something is genuinely ambiguous.`,
+      text: `Receipt items:\n${items}\n\nPeople: ${names.join(", ")}. "I", "me" or "my" means ${payer}.\n\nWho had what, in their words:\n"""${sentence}"""\n\nFor every item index, list who had it and how many units each. Example: on "3 x Veg Biryani", "I had 1 biryani, Sam the rest" gives Me 1 and Sam 2. An item shared evenly gives each sharer 1. Items nobody mentioned, or said to be shared by everyone, get all people with 1 each. Set "question" to an empty string unless something is genuinely ambiguous. List in "not_on_receipt" every food or drink they mention that matches no receipt item (e.g. "dosa" when the receipt only has pizza and burger). Short names, nicknames, spelling slips and other languages for a receipt item still match; only list what is clearly not on it.`,
     },
   ]);
 }
