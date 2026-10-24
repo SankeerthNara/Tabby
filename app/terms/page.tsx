@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = { title: "Terms - Tabby" };
+export const metadata: Metadata = {
+  title: "Terms",
+  description: "The terms for using Tabby to split receipts and send PayPal payment requests to friends.",
+  alternates: { canonical: "/terms" },
+};
 
 export default function Terms() {
   return (

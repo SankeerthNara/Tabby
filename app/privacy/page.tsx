@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = { title: "Privacy - Tabby" };
+export const metadata: Metadata = {
+  title: "Privacy",
+  description: "What Tabby stores when you split a bill, what it sends to PayPal and the AI, and how to have it removed.",
+  alternates: { canonical: "/privacy" },
+};
 
 export default function Privacy() {
   return (
